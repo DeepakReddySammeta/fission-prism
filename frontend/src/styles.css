@@ -5,25 +5,42 @@
 @tailwind utilities;
 
 :root {
-  /* "Cool and Collected" palette — deep teals with one warm rust accent.
-   * Fixed dark fill — brand mark / primary buttons / active pills always
-   * render white text on this, in both themes, so it must stay dark. */
-  --navy: #024950;
-  --navy-deep: #003135;
+  /* Fission's own default ("fission"/orange) brand theme — no client
+   * override layer anymore; these are Fission's literal published values
+   * (design-system site, :root[data-theme=fission]), not Voyage's own
+   * picks. --navy/--brass/etc. are kept as the variable *names* our own
+   * hand-authored CSS already references throughout this file — only the
+   * values moved to Fission's palette, so nothing downstream needed to
+   * change to pick up the new theme. */
+  --navy: #1c1e2e;
+  --navy-deep: #09090b;
   /* Heading/text color — this one DOES flip light in dark mode. */
   --heading: var(--navy);
-  --paper: #f2fafb;
-  --paper-dim: #d7edf0;
+  --paper: #fafafa;
+  --paper-dim: #f4f4f5;
   --card: #ffffff;
-  --ink: #12292c;
-  --muted: #5c7d81;
-  --brass: #0fa4af;
-  --brass-light: #6cc6ce;
-  --coral: #964734;
-  --success: #1a8a5f;
+  --ink: #18181b;
+  --muted: #71717a;
+  --brass: #f25011;
+  --brass-light: #ff9955;
+  /* Fission ships one brand hue, not two — chart-2 (blue) stands in as the
+   * secondary accent (surface top borders, PDF markers, hero-flourish)
+   * everywhere the old rust/coral used to, since blue reads as a deliberate
+   * complement to orange rather than clashing with it. */
+  --coral: var(--chart-2);
+  --success: #16a34a;
   --success-bg: #e3f5ec;
-  --rule: #cfe6e9;
+  --rule: #e4e4e7;
   --shimmer-hi: #fff;
+
+  /* Fission's chart palette, included for fidelity even though only
+   * chart-2 is actually consumed (via --coral) today. */
+  --chart-1: #8b5cf6;
+  --chart-2: #3b82f6;
+  --chart-3: #ec4899;
+  --chart-4: #10b981;
+  --chart-5: #f59e0b;
+  --chart-6: #f43f5e;
 
   --serif: 'Fraunces', Georgia, serif;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -39,26 +56,24 @@
   --space-5: 24px;
   --space-6: 32px;
 
-  --shadow-sm: 0 1px 2px rgba(2, 73, 80, 0.07);
-  --shadow-md: 0 6px 20px rgba(2, 73, 80, 0.09);
-  --shadow-lg: 0 16px 48px rgba(2, 73, 80, 0.16);
+  /* Neutral (not brand-tinted) shadows — a shadow that used to lean teal
+   * would just look like a mistake now that the brand is orange, and a
+   * neutral shadow works under any brand color going forward. */
+  --shadow-sm: 0 1px 2px rgba(24, 24, 27, 0.07);
+  --shadow-md: 0 6px 20px rgba(24, 24, 27, 0.09);
+  --shadow-lg: 0 16px 48px rgba(24, 24, 27, 0.16);
 
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   --dur-fast: 0.18s;
   --dur: 0.32s;
 
-  /* ---- Fission/shadcn-standard tokens, mapped onto Voyage's own brand
-   * values (per DESIGN_SYSTEM.md's "client theming" pattern) so the Fission
-   * component set (Button, Card, Input, Dialog, Tabs, Badge, ...) renders
-   * on-brand without needing its own separate palette.
-   * Primary actions use the bright cyan (--brass), not the rust (--coral) —
-   * rust reads muddy/brownish as a large button fill against the teal
-   * chrome, especially in dark mode, where cyan pops instead. Rust stays in
-   * play as the secondary accent (surface top borders, PDF markers, the
-   * hero-flourish plane before this same swap was applied to it too). ---- */
+  /* ---- Fission/shadcn-standard tokens. Previously these mapped Fission's
+   * naming onto a separate custom Voyage palette; now that the app runs
+   * Fission's own theme directly, they just alias straight onto the names
+   * above, which already hold Fission's real values. ---- */
   --color-brand: var(--brass);
-  --color-brand-hover: #0c8089;
-  --color-brand-active: #0a6b73;
+  --color-brand-hover: #e0470f;
+  --color-brand-active: #cf400d;
   --color-on-brand: #ffffff;
 
   --background: var(--paper);
@@ -85,12 +100,23 @@
   --success-foreground: #ffffff;
   --warning: #d97706;
   --warning-foreground: #ffffff;
+  /* Note: the actual `.sidebar` rule below renders on --card/--ink directly
+   * (it follows the app's own light/dark theme, same as everything else),
+   * not these --sidebar-* aliases — Fission's own docs site instead always
+   * keeps its sidebar permanently dark, a structural UI choice this app
+   * never made and isn't part of "the theme" (the color palette) itself.
+   * Kept defined, at Fission's real values, for fidelity/future use. */
   --sidebar-background: var(--card);
   --sidebar-foreground: var(--ink);
+  --sidebar-muted: #9ca3af;
+  --sidebar-accent: rgba(242, 80, 17, 0.12);
+  --sidebar-border: rgba(255, 255, 255, 0.08);
   /* A visible "chip" fill for sidebar nav rows (My Plans, My Bookings, the
    * theme toggle) — at rest, not just on hover, so they read as deliberate
-   * controls instead of bare text sitting on the sidebar background. */
-  --sidebar-chip: #e3f4f6;
+   * controls instead of bare text sitting on the sidebar background. Reuses
+   * Fission's own translucent sidebar-accent (a soft brand-orange tint)
+   * rather than a separate color. */
+  --sidebar-chip: var(--sidebar-accent);
 }
 
 * { box-sizing: border-box; }
@@ -98,7 +124,7 @@ html, body, #root { height: 100%; }
 body {
   margin: 0;
   background:
-    radial-gradient(1200px 480px at 50% -160px, rgba(15, 164, 175, 0.14), transparent 60%),
+    radial-gradient(1200px 480px at 50% -160px, rgba(242, 80, 17, 0.14), transparent 60%),
     var(--paper);
   color: var(--ink);
   font-family: var(--sans);
@@ -168,7 +194,7 @@ body {
   box-shadow: var(--shadow-sm);
   transition: box-shadow var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.query-input:focus { outline: none; border-color: var(--brass); box-shadow: 0 0 0 4px rgba(15, 164, 175, 0.18); }
+.query-input:focus { outline: none; border-color: var(--brass); box-shadow: 0 0 0 4px rgba(242, 80, 17, 0.18); }
 
 .mic-btn {
   flex: none; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--rule);
@@ -183,8 +209,8 @@ body {
 }
 @media (prefers-reduced-motion: reduce) { .mic-btn-active { animation: none; } }
 @keyframes micPulseRing {
-  0% { box-shadow: var(--shadow-sm), 0 0 0 0 rgba(15, 164, 175, 0.5); }
-  100% { box-shadow: var(--shadow-sm), 0 0 0 14px rgba(15, 164, 175, 0); }
+  0% { box-shadow: var(--shadow-sm), 0 0 0 0 rgba(242, 80, 17, 0.5); }
+  100% { box-shadow: var(--shadow-sm), 0 0 0 14px rgba(242, 80, 17, 0); }
 }
 .dark .mic-btn { background: var(--card); color: var(--ink); }
 
@@ -287,7 +313,7 @@ body {
   font: inherit; font-size: 13.5px; padding: 9px 12px;
   border-radius: var(--radius-sm); border: 1px solid var(--rule); background: #fff; color: var(--ink);
 }
-.a2-field-input:focus { outline: none; border-color: var(--brass); box-shadow: 0 0 0 3px rgba(15, 164, 175, 0.17); }
+.a2-field-input:focus { outline: none; border-color: var(--brass); box-shadow: 0 0 0 3px rgba(242, 80, 17, 0.17); }
 .a2-choicepicker { display: flex; gap: 4px; flex-wrap: wrap; }
 .a2-choice {
   font: inherit; font-size: 13px; padding: 8px 12px; border-radius: var(--radius-sm);
@@ -449,19 +475,22 @@ body {
    * <input type="date"> calendar popup, scrollbars, etc. — instead of
    * always rendering them light regardless of the page's own theme. */
   color-scheme: dark;
-  --heading: #e8f6f7;
-  --paper: #00181b;
-  --paper-dim: #06393d;
-  --card: #024950;
-  --sidebar-chip: #0a4a51;
-  --ink: #d7eef0;
-  --muted: #85aeb2;
-  --rule: #0c4a4f;
-  --shimmer-hi: #1f5b61;
+  /* Fission's real dark-mode values (design-system site's .dark block) —
+   * --brass/--color-brand stay the same orange in both themes, same as
+   * Fission's own CSS never redefines --color-brand under .dark. */
+  --heading: #fafafa;
+  --paper: #09090b;
+  --paper-dim: #27272a;
+  --card: #18181b;
+  --sidebar-chip: rgba(242, 80, 17, 0.16);
+  --ink: #f4f4f5;
+  --muted: #a1a1aa;
+  --rule: #3f3f46;
+  --shimmer-hi: #27272a;
   --success-bg: #0d2f26;
 }
 .dark body {
-  background: radial-gradient(1200px 480px at 50% -160px, rgba(15, 164, 175, 0.12), transparent 60%), var(--paper);
+  background: radial-gradient(1200px 480px at 50% -160px, rgba(242, 80, 17, 0.10), transparent 60%), var(--paper);
 }
 .dark .query-input,
 .dark .a2-field-input,
@@ -664,7 +693,7 @@ body {
 }
 
 @keyframes wxSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-@keyframes wxGlow { 0%, 100% { filter: drop-shadow(0 0 0 rgba(15, 164, 175, 0)); } 50% { filter: drop-shadow(0 0 6px rgba(15, 164, 175, 0.55)); } }
+@keyframes wxGlow { 0%, 100% { filter: drop-shadow(0 0 0 rgba(242, 80, 17, 0)); } 50% { filter: drop-shadow(0 0 6px rgba(242, 80, 17, 0.55)); } }
 @keyframes wxDrift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
 @keyframes wxBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
 @keyframes wxSway { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }

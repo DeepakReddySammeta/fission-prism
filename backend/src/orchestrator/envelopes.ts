@@ -78,7 +78,7 @@ function destinationCategoryPool(bestFor: string): string[] {
   if (/hill|mountain|trek|snow|valley|tea/.test(s)) return DEST_HILL_IDS;
   if (/fort|palace|heritage|cultur|histor|temple|old town/.test(s)) return DEST_HERITAGE_IDS;
   if (/backwater|houseboat|lake|river|canal/.test(s)) return DEST_WATER_IDS;
-  if (/wildlife|forest|nature|safari|sanctuary|jungle/.test(s)) return DEST_WILDLIFE_IDS;
+  if (/wildlife|forest|nature|safari|sanctuary|jungle|waterfall/.test(s)) return DEST_WILDLIFE_IDS;
   return DEST_GENERIC_IDS;
 }
 
@@ -160,7 +160,7 @@ export function flightsSurface(surfaceId: string, flights: FlightOption[]): Enve
   }));
 
   return [
-    createSurface(surfaceId, 'Flight Finder', '#0fa4af'),
+    createSurface(surfaceId, 'Flight Finder', '#f25011'),
     {
       version: A2UI_VERSION,
       updateComponents: {
@@ -223,7 +223,7 @@ export function destinationsSurface(
   const bodyChildren = isCountryLevel ? ['head', 'subhead', 'list'] : ['head', 'subhead', 'list', 'schedule_row'];
 
   return [
-    createSurface(surfaceId, 'Trip Inspiration', '#0fa4af'),
+    createSurface(surfaceId, 'Trip Inspiration', '#f25011'),
     {
       version: A2UI_VERSION,
       updateComponents: {
@@ -299,7 +299,7 @@ export function hotelsSurface(surfaceId: string, hotels: HotelOption[]): Envelop
     };
   });
   return [
-    createSurface(surfaceId, 'Stay Finder', '#964734'),
+    createSurface(surfaceId, 'Stay Finder', '#3b82f6'),
     {
       version: A2UI_VERSION,
       updateComponents: {
@@ -399,7 +399,7 @@ export function roomsSurface(surfaceId: string, hotel: HotelOption, booking?: Ro
   const highlightIds = highlights.map((_, i) => `hl_${i}`);
 
   return [
-    createSurface(surfaceId, 'Stay Finder', '#964734'),
+    createSurface(surfaceId, 'Stay Finder', '#3b82f6'),
     {
       version: A2UI_VERSION,
       updateComponents: {
@@ -630,7 +630,7 @@ export function tripSummarySurface(surfaceId: string, trip: TripSummary): Envelo
   }
 
   return [
-    createSurface(surfaceId, 'Trip Summary', '#024950'),
+    createSurface(surfaceId, 'Trip Summary', '#1c1e2e'),
     { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
     updateData(surfaceId, '/guestName', trip.guestName || ''),
   ];
@@ -652,7 +652,7 @@ export function myRecordsSurface(surfaceId: string, label: string, records: Plan
   }));
 
   return [
-    createSurface(surfaceId, 'My Trips', '#024950'),
+    createSurface(surfaceId, 'My Trips', '#1c1e2e'),
     {
       version: A2UI_VERSION,
       updateComponents: {
@@ -797,7 +797,7 @@ export function recordDetailSurface(surfaceId: string, record: PlanRecordSummary
   }
 
   return [
-    createSurface(surfaceId, 'Trip Details', '#024950'),
+    createSurface(surfaceId, 'Trip Details', '#1c1e2e'),
     { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
   ];
 }

@@ -63,7 +63,15 @@ export async function getFlightOptions(
       LIVE_TIMEOUT_MS
     );
     if (result?.flights?.length) {
-      return { flights: result.flights.map((f) => ({ ...f, date: departureDate })), source: 'live' };
+      // The prompt asks for unique ids, but nothing stops a model from
+      // ignoring that — and a duplicate id would silently overwrite another
+      // flight once the caller builds a Map keyed by id. Re-indexing here
+      // makes uniqueness a guarantee instead of a request, regardless of
+      // what the LLM actually returned.
+      return {
+        flights: result.flights.map((f, i) => ({ ...f, id: String(i + 1), date: departureDate })),
+        source: 'live',
+      };
     }
   }
   return { flights: mockFlights(origin, destination).map((f) => ({ ...f, date: departureDate })), source: 'mock' };

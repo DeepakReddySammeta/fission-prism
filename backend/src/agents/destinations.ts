@@ -25,9 +25,10 @@ What you CAN do:
   themes, picking whichever genuinely fits best, paired with one specific detail: "Beach" /
   "Coastal" / "Island" for coastal places; "Hill station" / "Mountain" for hill/mountain
   places; "Heritage" / "Culture" / "Fort" / "Palace" for historical places; "Backwaters" /
-  "Houseboats" / "Lake" for water-based places; "Wildlife" / "Nature" / "Forest" for
-  sanctuaries and nature reserves. Example: "Hill station & tea gardens", "Backwaters &
-  houseboats", "Heritage & palaces". This wording is read by simple keyword matching to pick
+  "Houseboats" / "Lake" for water-based places; "Wildlife" / "Nature" / "Forest" /
+  "Waterfalls" for sanctuaries, nature reserves, and waterfalls. Example: "Hill station &
+  tea gardens", "Backwaters & houseboats", "Heritage & palaces". This wording is read by
+  simple keyword matching to pick
   a photo, so leading with one of these exact theme words matters more than being clever.
 
 What you CANNOT / MUST NOT do:
@@ -65,7 +66,7 @@ const MOCK_POOL: Record<string, Omit<DestinationSuggestion, 'id'>[]> = {
     { name: 'Baga', blurb: 'The busiest beach strip, full of shacks and nightlife.', bestFor: 'Nightlife', imageSeed: 'baga-beach' },
     { name: 'Palolem', blurb: 'A quieter, palm-lined cove in South Goa.', bestFor: 'Quiet beaches', imageSeed: 'palolem-cove' },
     { name: 'Old Goa', blurb: 'UNESCO-listed Portuguese churches and colonial architecture.', bestFor: 'History', imageSeed: 'old-goa-church' },
-    { name: 'Anjuna', blurb: 'Flea markets and a laid-back, bohemian beach scene.', bestFor: 'Markets & cafes', imageSeed: 'anjuna-market' },
+    { name: 'Anjuna', blurb: 'Flea markets and a laid-back, bohemian beach scene.', bestFor: 'Beach & flea markets', imageSeed: 'anjuna-market' },
     { name: 'Dudhsagar Falls', blurb: 'A four-tiered waterfall reachable by jeep safari.', bestFor: 'Waterfalls', imageSeed: 'dudhsagar-falls' },
     { name: 'Fontainhas', blurb: 'Panaji’s pastel-painted Latin quarter, best explored on foot.', bestFor: 'Old town walks', imageSeed: 'fontainhas-panaji' },
   ],

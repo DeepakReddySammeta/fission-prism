@@ -58,7 +58,18 @@ export async function getHotelOptions(
       `Destination: ${destination}`,
       LIVE_TIMEOUT_MS
     );
-    if (result?.hotels?.length) return { hotels: result.hotels, source: 'live' };
+    if (result?.hotels?.length) {
+      // Same reasoning as flights.ts: the prompt asks for unique hotel/room
+      // ids, but a non-compliant response would silently overwrite a hotel
+      // (Map keyed by id) or make a room unreachable by id (Array.find only
+      // ever returns the first match). Re-indexing makes it a guarantee.
+      const hotels = result.hotels.map((h, i) => ({
+        ...h,
+        id: `hotel-${i + 1}`,
+        rooms: h.rooms.map((r, j) => ({ ...r, id: `hotel-${i + 1}-room-${j + 1}` })),
+      }));
+      return { hotels, source: 'live' };
+    }
   }
   return { hotels: mockHotels(destination), source: 'mock' };
 }

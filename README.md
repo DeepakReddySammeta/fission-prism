@@ -94,8 +94,11 @@ call carries only the raw query text or a bare origin/destination string.
 **Backend:** Fastify, TypeScript, better-sqlite3, the Groq SDK (model
 `openai/gpt-oss-20b`), bcryptjs, jsonwebtoken, google-auth-library.
 
-**Frontend:** React 18, Vite, TypeScript, Tailwind CSS, Radix/shadcn-style UI
-primitives, react-router-dom, react-hook-form, jsPDF.
+**Frontend:** React 18, Vite, TypeScript, Tailwind CSS, the
+[Fission design system](https://fissionhq.github.io/ui-design-system/)
+(button, input, card, badge, dialog, form, select, table, tabs, toast —
+themed with Fission's own default orange palette), react-router-dom,
+react-hook-form, jsPDF.
 
 Chosen for a POC that needs to run on a laptop with `npm install` and
 nothing else: no database server (SQLite), no billing setup for a demo
@@ -125,7 +128,7 @@ frontend/
   src/a2ui/store.ts       A2UIStore — per-turn state, consumed via useSyncExternalStore
   src/planner/            PlannerContext (conversations/turns), persistence.ts (localStorage)
   src/components/         TripBuilderCard, WeatherCard, Stepper — hand-built, reused across surfaces
-  src/components/ui/      Radix/shadcn-style primitives, themed with Voyage's own tokens (styles.css)
+  src/components/ui/      Fission design-system primitives, vendored in via the shadcn CLI (see below)
   src/lib/useVoiceSearch.ts  Web Speech API wrapper
   src/shell/              sidebar, recents/pinned, theme toggle
   src/auth/, src/pages/   auth context/dialog, My Plans gallery + detail, My Bookings
@@ -137,6 +140,91 @@ package. For two small apps this keeps things simple — no build step for a
 third package, no monorepo/workspace symlink resolution to get right. The
 cost: if you change a field in one copy, mirror the same edit in the other by
 hand (both files carry a comment saying so).
+
+## Design system (Fission)
+
+The frontend's UI primitives and color theme both come from
+[Fission](https://fissionhq.github.io/ui-design-system/) — but it's a
+shadcn-compatible **registry**, not an npm package: the shadcn CLI copies
+Fission's component source directly into `src/components/ui/`, and there's
+no `fission-ui` entry in `package.json` to `npm update`. That means new
+Fission releases don't reach this repo automatically — pull them by hand
+with the commands below.
+
+### Updating the components
+
+Fission publishes a plain registry manifest and one JSON file per
+component:
+
+```bash
+# see what Fission currently ships (adjust if the item list ever grows)
+curl -s https://fissionhq.github.io/ui-design-system/registry.json | jq '.items[].name'
+```
+
+To pull the latest version of everything currently in use:
+
+```bash
+cd frontend
+npx shadcn@latest add \
+  https://fissionhq.github.io/ui-design-system/r/badge.json \
+  https://fissionhq.github.io/ui-design-system/r/button.json \
+  https://fissionhq.github.io/ui-design-system/r/card.json \
+  https://fissionhq.github.io/ui-design-system/r/dialog.json \
+  https://fissionhq.github.io/ui-design-system/r/form.json \
+  https://fissionhq.github.io/ui-design-system/r/input.json \
+  https://fissionhq.github.io/ui-design-system/r/select.json \
+  https://fissionhq.github.io/ui-design-system/r/table.json \
+  https://fissionhq.github.io/ui-design-system/r/tabs.json \
+  https://fissionhq.github.io/ui-design-system/r/toast.json \
+  --yes --overwrite
+```
+
+The CLI diffs against what's already there — it reports which files it
+skipped (identical), updated, or created, and installs any new npm
+dependency a component needs on its own. To add a component Fission ships
+but this app doesn't use yet, just add its URL to the list (or run the
+command with only that one URL).
+
+### Updating the theme
+
+There's no CLI for this part — Fission's color values live in their site's
+compiled CSS, not in the registry JSON. To re-sync:
+
+```bash
+curl -s https://fissionhq.github.io/ui-design-system/ \
+  | grep -oE '_next/static/css/[a-z0-9]+\.css' # find the current CSS bundle path
+curl -s https://fissionhq.github.io/ui-design-system/<path-from-above> -o /tmp/fission.css
+grep -oE ':root(\[data-theme=fission\])?\{[^}]*\}|\.dark\{[^}]*\}' /tmp/fission.css
+```
+
+That prints Fission's current `:root`/`:root[data-theme=fission]` (light)
+and `.dark` (dark) values. Copy the hex values across into the matching
+variable **names** already in `frontend/src/styles.css`'s `:root` and
+`.dark` blocks (`--navy`, `--brass`, `--paper`, `--ink`, `--muted`, `--rule`,
+`--success`, `--color-brand-hover`, `--color-brand-active`, ...) — the
+names stay put on purpose, since every other hand-authored rule in that file
+references them; only the values need to change to pick up a new Fission
+release. Two things a plain value-swap won't catch, so check both by hand
+after updating:
+
+- **Hardcoded color literals.** A few places write a brand-tinted
+  `rgba(r, g, b, alpha)` directly (focus rings, the mic-button pulse
+  animation, the hero-flourish glow) instead of `var(--brass)`, so they
+  won't repaint on their own — `grep -n "rgba(242, 80, 17" frontend/src/styles.css`
+  finds today's set; update them to match whatever the new brand RGB is.
+- **Backend-sent surface colors.** `backend/src/orchestrator/envelopes.ts`'s
+  `createSurface(...)` calls hardcode a hex string per surface (the card's
+  top-border color, sent to the client in the envelope's `theme.primaryColor`)
+  — `grep -n "createSurface(" backend/src/orchestrator/envelopes.ts` finds
+  every one that needs updating too.
+
+Fission also ships four alternate palettes besides the default orange
+(`ocean` blue, `forest` green, `violet` purple, `slate` gray) — same
+`grep`, just against `:root[data-theme=ocean]` etc., if the brand color
+ever needs to change again.
+
+After either kind of update: `cd frontend && npx tsc --noEmit`, then eyeball
+the composer, a flights/hotels search, and dark mode before calling it done.
 
 ## Prerequisites
 
