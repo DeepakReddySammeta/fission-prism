@@ -1,0 +1,676 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* "Cool and Collected" palette — deep teals with one warm rust accent.
+   * Fixed dark fill — brand mark / primary buttons / active pills always
+   * render white text on this, in both themes, so it must stay dark. */
+  --navy: #024950;
+  --navy-deep: #003135;
+  /* Heading/text color — this one DOES flip light in dark mode. */
+  --heading: var(--navy);
+  --paper: #f2fafb;
+  --paper-dim: #d7edf0;
+  --card: #ffffff;
+  --ink: #12292c;
+  --muted: #5c7d81;
+  --brass: #0fa4af;
+  --brass-light: #6cc6ce;
+  --coral: #964734;
+  --success: #1a8a5f;
+  --success-bg: #e3f5ec;
+  --rule: #cfe6e9;
+  --shimmer-hi: #fff;
+
+  --serif: 'Fraunces', Georgia, serif;
+  --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+
+  --radius-sm: 6px;
+  --radius: 12px;
+  --radius-lg: 18px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --shadow-sm: 0 1px 2px rgba(2, 73, 80, 0.07);
+  --shadow-md: 0 6px 20px rgba(2, 73, 80, 0.09);
+  --shadow-lg: 0 16px 48px rgba(2, 73, 80, 0.16);
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 0.18s;
+  --dur: 0.32s;
+
+  /* ---- Fission/shadcn-standard tokens, mapped onto Voyage's own brand
+   * values (per DESIGN_SYSTEM.md's "client theming" pattern) so the Fission
+   * component set (Button, Card, Input, Dialog, Tabs, Badge, ...) renders
+   * on-brand without needing its own separate palette.
+   * Primary actions use the bright cyan (--brass), not the rust (--coral) —
+   * rust reads muddy/brownish as a large button fill against the teal
+   * chrome, especially in dark mode, where cyan pops instead. Rust stays in
+   * play as the secondary accent (surface top borders, PDF markers, the
+   * hero-flourish plane before this same swap was applied to it too). ---- */
+  --color-brand: var(--brass);
+  --color-brand-hover: #0c8089;
+  --color-brand-active: #0a6b73;
+  --color-on-brand: #ffffff;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card-foreground: var(--ink);
+  --primary: var(--color-brand);
+  --primary-foreground: var(--color-on-brand);
+  --primary-hover: var(--color-brand-hover);
+  --primary-active: var(--color-brand-active);
+  --secondary: var(--paper-dim);
+  --secondary-foreground: var(--ink);
+  /* Note: --muted is already defined above as a gray TEXT color (used by
+   * a lot of our own hand-authored CSS, e.g. .a2-caption). Fission/shadcn's
+   * `bg-muted` utility expects a light FILL instead, so tailwind.config.ts
+   * points Tailwind's `muted` color at --secondary, not at this --muted. */
+  --muted-foreground: var(--muted);
+  --accent: var(--secondary);
+  --accent-foreground: var(--secondary-foreground);
+  --border: var(--rule);
+  --input: var(--rule);
+  --ring: var(--color-brand);
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --success-foreground: #ffffff;
+  --warning: #d97706;
+  --warning-foreground: #ffffff;
+  --sidebar-background: var(--card);
+  --sidebar-foreground: var(--ink);
+  /* A visible "chip" fill for sidebar nav rows (My Plans, My Bookings, the
+   * theme toggle) — at rest, not just on hover, so they read as deliberate
+   * controls instead of bare text sitting on the sidebar background. */
+  --sidebar-chip: #e3f4f6;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background:
+    radial-gradient(1200px 480px at 50% -160px, rgba(15, 164, 175, 0.14), transparent 60%),
+    var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* ---------------- Chat page: composer pinned at the bottom, results/
+   conversation fill and scroll the space above it ---------------- */
+
+.chat-page { height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
+/* Empty state (no conversation yet): center the composer in the full
+ * viewport, ChatGPT/Claude-landing-style, instead of docking it to the
+ * bottom edge — it docks to the bottom only once results start streaming
+ * in above it (see .chat-composer-inner-centered for the narrower width). */
+.chat-page-empty { justify-content: center; }
+.chat-scroll { flex: 1; overflow-y: auto; }
+.chat-stream {
+  max-width: 1160px; margin: 0 auto; padding: 28px 24px 24px;
+  display: flex; flex-direction: column; gap: 18px;
+}
+
+.chat-msg-user {
+  align-self: flex-end; max-width: 72%;
+  background: linear-gradient(155deg, var(--navy), var(--navy-deep)); color: #fff;
+  padding: 12px 18px; border-radius: 16px 16px 4px 16px; font-size: 14.5px;
+}
+.chat-msg-ai { align-self: flex-start; max-width: 80%; display: flex; gap: 12px; align-items: flex-start; }
+.chat-ai-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  background: linear-gradient(155deg, var(--navy), var(--navy-deep)); color: var(--brass-light);
+  display: grid; place-items: center; font-family: var(--serif); font-weight: 700; font-size: 13px;
+}
+.chat-msg-ai p {
+  margin: 0; padding: 12px 16px; background: var(--card); border: 1px solid var(--rule);
+  border-radius: 4px 16px 16px 16px; font-size: 14.5px; line-height: 1.5;
+}
+.chat-thinking { font-style: italic; color: var(--muted); }
+
+.chat-composer { flex: none; border-top: 1px solid var(--rule); padding: 18px 24px 22px; }
+.chat-page-empty .chat-composer { border-top: none; }
+.chat-composer-inner { max-width: 1160px; margin: 0 auto; }
+.chat-composer-inner-centered { max-width: 740px; }
+
+.chat-brand-hero { margin-bottom: 22px; }
+
+.brand { display: flex; align-items: center; gap: 14px; animation: fadeInUp var(--dur) var(--ease) both; }
+.brand-mark {
+  width: 44px; height: 44px; border-radius: 10px;
+  background: linear-gradient(155deg, var(--navy), var(--navy-deep));
+  color: var(--brass-light);
+  display: grid; place-items: center;
+  font-family: var(--serif); font-weight: 700; font-size: 21px;
+  box-shadow: var(--shadow-md);
+}
+.brand h1 { margin: 0; font-family: var(--serif); font-weight: 700; font-size: 30px; letter-spacing: -0.01em; color: var(--heading); }
+.brand p { margin: 2px 0 0; font-size: 13.5px; color: var(--muted); }
+
+.query-form {
+  display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  animation: fadeInUp var(--dur) var(--ease) both; animation-delay: 60ms;
+}
+.query-input {
+  flex: 1; font: inherit; font-size: 15.5px;
+  height: 48px; padding: 0 18px; border-radius: var(--radius); border: 1px solid var(--rule);
+  background: #fff; color: var(--ink);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.query-input:focus { outline: none; border-color: var(--brass); box-shadow: 0 0 0 4px rgba(15, 164, 175, 0.18); }
+
+.mic-btn {
+  flex: none; width: 48px; height: 48px; border-radius: 50%; border: 1px solid var(--rule);
+  background: #fff; font-size: 19px; cursor: pointer; display: grid; place-items: center;
+  box-shadow: var(--shadow-sm); position: relative;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.mic-btn:hover { border-color: var(--brass); }
+.mic-btn-active {
+  background: var(--brass); border-color: var(--brass);
+  animation: micPulseRing 1.6s ease-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .mic-btn-active { animation: none; } }
+@keyframes micPulseRing {
+  0% { box-shadow: var(--shadow-sm), 0 0 0 0 rgba(15, 164, 175, 0.5); }
+  100% { box-shadow: var(--shadow-sm), 0 0 0 14px rgba(15, 164, 175, 0); }
+}
+.dark .mic-btn { background: var(--card); color: var(--ink); }
+
+.link-btn {
+  background: none; border: none; color: var(--muted); font: inherit; font-size: 13px;
+  cursor: pointer; text-decoration: underline; padding: 0;
+}
+.link-btn:hover { color: var(--ink); }
+
+.examples { display: flex; gap: 8px; flex-wrap: wrap; }
+.example-chip {
+  font: inherit; font-size: 12.5px;
+  padding: 7px 13px; border-radius: 999px;
+  background: var(--paper-dim); border: 1px solid var(--rule); color: var(--muted);
+  cursor: pointer; transition: border-color var(--dur-fast), color var(--dur-fast), transform var(--dur-fast);
+  animation: fadeInUp var(--dur) var(--ease) both;
+}
+.example-chip:hover { border-color: var(--brass); color: var(--ink); transform: translateY(-1px); }
+
+.hero-flourish { position: relative; height: 44px; margin-top: 24px; }
+.hero-flourish svg { width: 100%; height: 100%; overflow: visible; }
+.hero-flourish path {
+  fill: none; stroke: var(--brass); stroke-width: 2.2; stroke-linecap: round;
+  stroke-dasharray: 5 7;
+  stroke-dashoffset: 240;
+  animation: draw 2.4s var(--ease) forwards;
+}
+.dark .hero-flourish path { stroke: var(--brass-light); }
+.hero-plane {
+  position: absolute; top: -19px; left: 0; font-size: 32px; color: var(--brass);
+  animation: fly 3.6s var(--ease) infinite;
+}
+.dark .hero-plane { color: var(--brass-light); }
+
+/* ---------------- Results layout ---------------- */
+
+.results { display: block; }
+.results-main { display: flex; flex-direction: column; gap: 22px; }
+
+.trip-rail {
+  margin-top: 22px;
+  background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md); padding: 4px;
+}
+@media (min-width: 960px) {
+  .results.has-rail { display: grid; grid-template-columns: minmax(0, 1fr) 320px; align-items: start; gap: 28px; }
+  .trip-rail { position: sticky; top: 20px; margin-top: 0; }
+}
+
+/* ---------------- Surfaces / cards ---------------- */
+
+.section-card {
+  background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md); padding: 22px;
+}
+
+.reveal { animation: fadeInUp var(--dur) var(--ease) both; }
+
+.a2-card { display: block; }
+.a2-column { display: flex; flex-direction: column; gap: 10px; }
+.a2-row { display: flex; flex-direction: row; gap: 10px; }
+.a2-list { display: flex; flex-direction: column; gap: 4px; }
+.a2-list > * + * { border-top: 1px solid var(--rule); padding-top: 16px; margin-top: 4px; }
+
+.a2-text { white-space: pre-wrap; }
+.a2-h1 { font-family: var(--serif); font-size: 26px; font-weight: 700; color: var(--heading); }
+.a2-h2 { font-family: var(--serif); font-size: 19px; font-weight: 700; color: var(--heading); margin-bottom: 4px; }
+.a2-h3 { font-size: 14.5px; font-weight: 600; }
+.a2-body { font-size: 13.5px; }
+.a2-caption { font-size: 11.5px; color: var(--muted); }
+.a2-mono { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--heading); }
+
+.a2-divider { height: 1px; background: var(--rule); margin: 4px 0; }
+.a2-icon { color: var(--brass); }
+.a2-monogram {
+  width: 42px; height: 42px; border-radius: 50%; flex: none;
+  display: grid; place-items: center; font-family: var(--mono); font-weight: 700; font-size: 13px;
+}
+.a2-pending { height: 12px; border-radius: 4px; background: var(--paper-dim); }
+.a2-waiting { padding: 20px; color: var(--muted); font-size: 12.5px; font-style: italic; }
+
+/* Images */
+.a2-img-wrap { position: relative; width: 128px; height: 96px; border-radius: var(--radius); overflow: hidden; flex: none; }
+.a2-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.a2-img-shimmer {
+  position: absolute; inset: 0;
+  background: linear-gradient(100deg, var(--paper-dim) 30%, var(--shimmer-hi) 50%, var(--paper-dim) 70%);
+  background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite;
+}
+.a2-img-fallback {
+  width: 128px; height: 96px; border-radius: var(--radius); flex: none;
+  background: linear-gradient(135deg, var(--paper-dim), var(--rule));
+  display: grid; place-items: center; font-size: 22px; color: var(--muted);
+}
+
+/* Form fields */
+.a2-field { display: flex; flex-direction: column; gap: 6px; }
+.a2-field-label { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.a2-field-input {
+  font: inherit; font-size: 13.5px; padding: 9px 12px;
+  border-radius: var(--radius-sm); border: 1px solid var(--rule); background: #fff; color: var(--ink);
+}
+.a2-field-input:focus { outline: none; border-color: var(--brass); box-shadow: 0 0 0 3px rgba(15, 164, 175, 0.17); }
+.a2-choicepicker { display: flex; gap: 4px; flex-wrap: wrap; }
+.a2-choice {
+  font: inherit; font-size: 13px; padding: 8px 12px; border-radius: var(--radius-sm);
+  border: 1px solid var(--rule); background: #fff; color: var(--ink); cursor: pointer;
+}
+.a2-choice-active { background: var(--brass); border-color: var(--brass); color: #fff; }
+
+/* Selected-flight detail card */
+.flight-detail-card {
+  background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius-lg);
+  padding: 18px 20px; box-shadow: var(--shadow-sm); display: flex; flex-direction: column; gap: 16px;
+}
+.flight-detail-head { display: flex; align-items: center; gap: 14px; }
+.flight-detail-title { flex: 1; font-size: 14px; }
+.flight-detail-route { display: flex; align-items: center; gap: 18px; }
+.flight-detail-point { display: flex; flex-direction: column; gap: 2px; }
+.flight-detail-time { font-family: var(--mono); font-size: 20px; font-weight: 600; color: var(--heading); }
+.flight-detail-path { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11.5px; }
+.flight-detail-line { width: 100%; height: 1px; background: var(--rule); position: relative; }
+.flight-detail-line::after {
+  content: '✈'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(90deg);
+  font-size: 11px; color: var(--coral); background: var(--card); padding: 0 4px;
+}
+.flight-detail-facts {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px;
+  border-top: 1px solid var(--rule); padding-top: 14px;
+}
+.flight-detail-facts > div { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.flight-detail-facts .muted { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.muted { color: var(--muted); }
+
+/* Combined flight+room recommendation card — one row per leg, reusing
+ * .flight-detail-card for the outer shell. */
+.trip-reco-leg { display: flex; align-items: center; gap: 14px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.trip-reco-leg:first-of-type { border-top: none; padding-top: 0; }
+.trip-reco-leg-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font-size: 13.5px; }
+.trip-reco-leg-price { font-family: var(--mono); font-weight: 700; font-size: 15px; color: var(--heading); text-align: right; white-space: nowrap; }
+
+/* Trip-builder card: traveler-count steppers + date fields, review phase.
+ * A grid with a fixed column count (not loose flex-wrap) so every field
+ * gets an equal, predictable width instead of shrinking to its content —
+ * two narrow steppers next to two date inputs looked lopsided otherwise. */
+.trip-builder-fields {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; align-items: end;
+  border-top: 1px solid var(--rule); padding-top: 16px; margin-top: 2px;
+}
+@media (max-width: 640px) {
+  .trip-builder-fields { grid-template-columns: repeat(2, 1fr); }
+}
+.stepper { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.stepper-controls {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  border: 1px solid var(--rule); border-radius: var(--radius-sm); padding: 6px 10px; background: #fff;
+}
+.stepper-btn {
+  width: 28px; height: 28px; flex: none; border-radius: 50%; border: 1px solid var(--rule);
+  background: #fff; color: var(--ink); font-size: 16px; line-height: 1; cursor: pointer;
+  display: grid; place-items: center;
+}
+.stepper-btn:hover:not(:disabled) { border-color: var(--brass); color: var(--brass); }
+.stepper-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.stepper-value { font-family: var(--mono); font-size: 14px; font-weight: 600; min-width: 16px; text-align: center; }
+
+.trip-builder-fields .a2-field { min-width: 0; }
+.trip-builder-fields .a2-field-input { width: 100%; box-sizing: border-box; height: 38px; }
+
+/* Confirm/Continue/Browse/Back action rows — equal-width, predictable
+ * buttons instead of each sizing to its own label length. */
+.trip-builder-actions { display: flex; gap: 10px; margin-top: 16px; }
+.trip-builder-actions > button { flex: 1 1 0; min-width: 0; }
+.trip-builder-save-link { display: block; margin-top: 10px; text-align: center; font-size: 12.5px; }
+
+/* Flight passenger-details / round-trip booking form */
+.flight-booking-form {
+  display: flex; flex-direction: column; gap: 12px;
+  border-top: 1px solid var(--rule); padding-top: 14px;
+}
+.flight-return-toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink); cursor: pointer; }
+.flight-return-toggle input { width: 15px; height: 15px; accent-color: var(--brass); }
+.flight-form-error { font-size: 12.5px; color: var(--coral); margin: 0; }
+.flight-confirmed-banner {
+  border-top: 1px solid var(--rule); padding-top: 14px; font-size: 13.5px; font-weight: 600; color: var(--success, #1a8a5f);
+}
+
+/* Cross-sell prompt */
+.cross-sell {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: linear-gradient(120deg, var(--card), var(--paper-dim));
+  border: 1px dashed var(--brass); border-radius: var(--radius);
+  padding: 14px 18px; font-size: 13.5px; color: var(--ink);
+}
+.cross-sell-input {
+  font: inherit; font-size: 13px; padding: 8px 12px;
+  border-radius: var(--radius-sm); border: 1px solid var(--rule); width: 160px;
+}
+
+/* Skeletons */
+.skel-row { display: flex; align-items: center; gap: 14px; padding: 12px 0; animation: fadeIn var(--dur) both; }
+.skel-col { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.skel-line, .skel-circle, .skel-thumb {
+  background: linear-gradient(100deg, var(--paper-dim) 30%, var(--shimmer-hi) 50%, var(--paper-dim) 70%);
+  background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite; border-radius: 6px;
+}
+.skel-line { height: 12px; }
+.skel-w-80 { width: 80px; } .skel-w-100 { width: 100px; } .skel-w-120 { width: 120px; }
+.skel-w-140 { width: 140px; } .skel-w-160 { width: 160px; } .skel-w-180 { width: 180px; } .skel-w-220 { width: 220px; }
+.skel-circle { width: 42px; height: 42px; border-radius: 50%; flex: none; }
+.skel-thumb { width: 128px; height: 96px; border-radius: var(--radius); flex: none; }
+
+/* ---------------- Keyframes ---------------- */
+
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+/* "View full plan" slide-over — sits above everything else in the app; the
+ * grid page behind it keeps its scroll position and filter state since it
+ * never unmounts. */
+.drawer-backdrop {
+  position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 200;
+  animation: fadeIn var(--dur) var(--ease) both;
+}
+.plan-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 201;
+  width: min(440px, 100vw); background: var(--card); box-shadow: -8px 0 32px rgba(0, 0, 0, 0.25);
+  overflow-y: auto; animation: slideInRight var(--dur) var(--ease) both;
+}
+.drawer-close {
+  position: absolute; top: 14px; right: 14px; z-index: 1;
+  width: 32px; height: 32px; border-radius: 50%; border: none; cursor: pointer;
+  background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 20px; line-height: 1;
+  display: grid; place-items: center;
+}
+.drawer-close:hover { background: rgba(0, 0, 0, 0.55); }
+.drawer-hero-img { height: 200px; background: center/cover; }
+.drawer-body { padding: 22px 24px 32px; }
+@media (max-width: 520px) {
+  .plan-drawer { width: 100vw; }
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+@keyframes draw { to { stroke-dashoffset: 0; } }
+@keyframes fly {
+  0% { left: 0; transform: translateY(0) rotate(6deg); }
+  50% { transform: translateY(-4px) rotate(6deg); }
+  100% { left: calc(100% - 26px); transform: translateY(0) rotate(6deg); }
+}
+
+@media (max-width: 640px) {
+  .query-form { flex-direction: column; }
+  .a2-row { flex-wrap: wrap; }
+  .a2-img-wrap, .a2-img-fallback { width: 100%; height: 160px; }
+}
+
+/* ---------------- Dark theme ---------------- */
+
+.dark {
+  /* Tells the browser to use dark-appropriate native chrome — the
+   * <input type="date"> calendar popup, scrollbars, etc. — instead of
+   * always rendering them light regardless of the page's own theme. */
+  color-scheme: dark;
+  --heading: #e8f6f7;
+  --paper: #00181b;
+  --paper-dim: #06393d;
+  --card: #024950;
+  --sidebar-chip: #0a4a51;
+  --ink: #d7eef0;
+  --muted: #85aeb2;
+  --rule: #0c4a4f;
+  --shimmer-hi: #1f5b61;
+  --success-bg: #0d2f26;
+}
+.dark body {
+  background: radial-gradient(1200px 480px at 50% -160px, rgba(15, 164, 175, 0.12), transparent 60%), var(--paper);
+}
+.dark .query-input,
+.dark .a2-field-input,
+.dark .a2-choice,
+.dark .cross-sell-input,
+.dark .stepper-controls,
+.dark .stepper-btn {
+  background: var(--card); color: var(--ink);
+}
+/* .dark .a2-choice above and .a2-choice-active (styles.css base rules) are
+ * both single-purpose selectors that happen to match the same element once
+ * a choice is selected in dark mode — .dark .a2-choice has higher
+ * specificity (two classes vs one), so it was silently winning and erasing
+ * the "selected" state entirely (every option rendered identically). This
+ * restores it by matching that specificity, placed after so source order
+ * settles the tie in its favor. */
+.dark .a2-choice-active { background: var(--brass); border-color: var(--brass); color: #fff; }
+.dark .brand-mark { color: var(--brass-light); }
+
+/* ---------------- Shell / sidebar ---------------- */
+
+.shell { display: flex; min-height: 100vh; }
+.shell-main { flex: 1; min-width: 0; }
+
+.sidebar {
+  width: 260px; flex: none;
+  display: flex; flex-direction: column;
+  background: var(--card); border-right: 1px solid var(--rule);
+  padding: 20px 16px; gap: 18px; height: 100vh; position: sticky; top: 0;
+}
+.sidebar-top { display: flex; flex-direction: column; gap: 14px; }
+.brand-compact { display: flex; align-items: center; gap: 10px; }
+.brand-compact strong { font-family: var(--serif); font-size: 16px; color: var(--heading); }
+
+.sidebar-nav { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+/* A filled chip at rest (not just on hover) — bare colored text on the
+ * sidebar's own background read as unstyled, especially in dark mode where
+ * that text color and the sidebar fill are both dark-adjacent. */
+.sidebar-link {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 10px; border-radius: var(--radius-sm);
+  background: var(--sidebar-chip);
+  color: var(--ink); text-decoration: none; font-size: 13.5px; font-weight: 600;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.sidebar-link:hover { background: var(--brass); color: #fff; }
+/* Deliberately rust, not the same cyan as "+ New chat" — a currently-open
+ * page and a clickable action are different things and shouldn't render
+ * identically; hovering (cyan) still reads as "this is clickable" even
+ * while a link sits in its active/rust "you are here" state. */
+.sidebar-link.active { background: var(--coral); color: #fff; }
+/* A fixed-width slot so the emoji glyph — which renders at very different
+ * natural widths from character to character — doesn't crowd the text or
+ * shift the label's left edge; matches the deliberate icon+text gap already
+ * used for the brand mark and the "+ New chat" button. */
+.sidebar-link-icon { flex: none; width: 18px; font-size: 15px; line-height: 1; text-align: center; }
+
+.sidebar-section { margin-top: 8px; }
+.sidebar-section-label {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); padding: 6px 10px 4px;
+}
+.sidebar-empty { padding: 0 10px; font-size: 12px; color: var(--muted); }
+
+.recent-row { display: flex; align-items: center; gap: 2px; border-radius: var(--radius-sm); }
+.recent-row:hover { background: var(--paper-dim); }
+.recent-query {
+  flex: 1; min-width: 0; text-align: left; background: none; border: none; cursor: pointer;
+  padding: 8px 4px 8px 10px; font: inherit; font-size: 12.5px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.pin-btn, .remove-btn {
+  /* --rule is a hairline-border color, tuned to nearly match the sidebar
+   * background in dark mode (by design, for actual hairlines) — using it
+   * for these glyphs made them functionally invisible there. --muted is
+   * built for exactly this: readable icon/text contrast in both themes. */
+  flex: none; background: none; border: none; cursor: pointer; color: var(--muted);
+  font-size: 17px; line-height: 1; padding: 6px; opacity: 0; transition: opacity var(--dur-fast), color var(--dur-fast);
+}
+.recent-row:hover .pin-btn, .recent-row:hover .remove-btn { opacity: 1; }
+.pin-btn:hover, .remove-btn:hover { color: var(--brass); }
+.pin-btn.pinned { color: var(--brass); opacity: 1; }
+.remove-btn { padding-right: 10px; font-size: 19px; }
+
+.sidebar-footer { display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--rule); padding-top: 14px; }
+.theme-toggle {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--sidebar-chip); border: 1px solid transparent; border-radius: var(--radius-sm);
+  padding: 8px 10px; font: inherit; font-size: 12.5px; color: var(--ink); cursor: pointer; text-align: left;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.theme-toggle:hover { background: var(--brass); color: #fff; }
+.account-row { display: flex; align-items: center; gap: 8px; }
+.account-avatar { width: 30px; height: 30px; font-size: 11px; background: var(--paper-dim); color: var(--navy); }
+.account-email { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 900px) {
+  .shell { flex-direction: column; }
+  .sidebar { width: 100%; height: auto; position: static; flex-direction: row; flex-wrap: wrap; align-items: center; }
+  .sidebar-nav { display: none; }
+}
+
+/* ---------------- Auth dialog (Fission Dialog handles the chrome; this is
+   just the Google/email-password divider) ---------------- */
+
+.modal-divider { display: flex; align-items: center; gap: 10px; margin: 16px 0; color: var(--muted); font-size: 11.5px; }
+.modal-divider::before, .modal-divider::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
+
+/* ---------------- My Plans ---------------- */
+
+.plans-page { max-width: 1000px; margin: 0 auto; padding: 32px 24px 80px; }
+.plans-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; margin-top: 20px; }
+
+.bookings-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+.booking-summary-line { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+.bookings-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin-top: 14px; }
+@media (max-width: 720px) {
+  .bookings-grid { grid-template-columns: 1fr; }
+}
+.plan-card {
+  position: relative;
+  display: block; background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius-lg);
+  overflow: hidden; box-shadow: var(--shadow-sm); text-decoration: none; color: inherit;
+  transition: transform var(--dur-fast), box-shadow var(--dur-fast);
+}
+.plan-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.plan-card-img { height: 140px; background: linear-gradient(135deg, var(--paper-dim), var(--rule)) center/cover; }
+.plan-card-body { padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.plan-card-delete {
+  position: absolute; top: 10px; right: 10px; z-index: 1;
+  width: 30px; height: 30px; border-radius: 50%; border: none;
+  background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 14px; line-height: 1;
+  display: grid; place-items: center; cursor: pointer;
+  opacity: 0; transition: opacity var(--dur-fast), background var(--dur-fast);
+}
+.plan-card:hover .plan-card-delete { opacity: 1; }
+.plan-card-delete:hover { background: var(--destructive); }
+.plan-card-delete:disabled { cursor: default; opacity: 1; }
+
+.plan-detail-card { max-width: 640px; }
+.plan-detail-img { height: 220px; border-radius: var(--radius); background: center/cover; margin: -22px -22px 18px; width: calc(100% + 44px); }
+
+/* ---------------- Weather card ----------------
+   Dashed border + tinted ground (vs. the solid --card/--rule the flights/
+   hotels/trip cards use) so this reads as a different kind of thing: a live
+   third-party lookup sitting beside governed data, not one more of it. */
+
+.weather-card {
+  background: var(--paper-dim); border: 1px dashed var(--rule); border-radius: var(--radius-lg);
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
+}
+.weather-card-loading { flex-direction: row; align-items: center; gap: 14px; }
+.wx-skel-icon {
+  width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(90deg, var(--rule) 25%, var(--card) 50%, var(--rule) 75%);
+  background-size: 200% 100%; animation: shimmer 1.4s ease-in-out infinite;
+}
+.wx-skel-lines { display: flex; flex-direction: column; gap: 6px; flex: 1; }
+
+.weather-card-heading { font-size: 12.5px; font-weight: 600; color: var(--navy); margin-bottom: 2px; }
+.dark .weather-card-heading { color: var(--brass-light); }
+.weather-card-main { display: flex; align-items: center; gap: 14px; }
+.wx-icon { font-size: 34px; line-height: 1; display: inline-block; }
+.wx-icon-sm { font-size: 18px; }
+.weather-card-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.weather-card-place { font-weight: 600; }
+.weather-card-condition, .weather-card-meta { font-size: 12.5px; color: var(--muted); }
+.weather-card-temp {
+  font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--navy); display: flex; align-items: flex-start; gap: 2px;
+}
+.weather-card-deg { font-size: 15px; font-weight: 600; margin-top: 4px; color: var(--muted); }
+
+.weather-forecast {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+  border-top: 1px dashed var(--rule); padding-top: 12px;
+}
+.weather-forecast-day {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  font-size: 12px; text-align: center;
+}
+.weather-forecast-label { color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; font-size: 10.5px; }
+.weather-forecast-range { font-variant-numeric: tabular-nums; }
+
+.weather-card-attribution {
+  display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted);
+}
+.weather-live-dot {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--brass); flex-shrink: 0;
+  animation: wxPulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .wx-sun { animation: wxSpin 14s linear infinite; }
+  .wx-moon { animation: wxGlow 3.2s ease-in-out infinite; }
+  .wx-drift { animation: wxDrift 4.5s ease-in-out infinite; }
+  .wx-rain { animation: wxBob 1.4s ease-in-out infinite; }
+  .wx-snow { animation: wxSway 3.6s ease-in-out infinite; }
+  .wx-storm { animation: wxFlash 2.4s ease-in-out infinite; }
+}
+
+@keyframes wxSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+@keyframes wxGlow { 0%, 100% { filter: drop-shadow(0 0 0 rgba(15, 164, 175, 0)); } 50% { filter: drop-shadow(0 0 6px rgba(15, 164, 175, 0.55)); } }
+@keyframes wxDrift { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(4px); } }
+@keyframes wxBob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(3px); } }
+@keyframes wxSway { 0%, 100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+@keyframes wxFlash { 0%, 100%, 40% { opacity: 1; } 45%, 55% { opacity: 0.55; } }
+@keyframes wxPulse { 0%, 100% { opacity: 0.5; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1.15); } }
+
+.dark .weather-card { background: var(--card); border-color: var(--rule); }
+.dark .weather-card-temp { color: var(--brass-light); }
+
