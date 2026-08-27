@@ -7,15 +7,34 @@ import cors from '@fastify/cors';
 import { OAuth2Client } from 'google-auth-library';
 import type { ActionPayload, FlightOption, HotelOption, ParsedIntent, RoomOption, TripSummary } from './types';
 import { PORT, LLM_ENABLED, GOOGLE_CLIENT_ID } from './config';
-import { parseIntent, detectMyRecordsIntent, detectExplorationIntent, type MyRecordsIntent } from './agents/intent';
+import {
+  parseIntent, detectMyRecordsIntent, detectExplorationIntent, detectAppointmentsQuery,
+  type MyRecordsIntent, type AppointmentsQuery,
+} from './agents/intent';
 import { getFlightOptions } from './agents/flights';
 import { getHotelOptions } from './agents/hotels';
 import { getDestinationSuggestions } from './agents/destinations';
 import { pickRecommendedFlight, pickRecommendedHotel, pickRecommendedRoom } from './agents/recommend';
-import { createSession, getSession, subscribe, unsubscribe, emit, emitAll, type PendingMyRecords, type PlanRecordSummary } from './orchestrator/sessions';
+import { getDoctorMatches, normalizeSpecialty, findDoctorByName, detectDoctorLookup, type DoctorMatch } from './agents/health';
+import { detectFinanceQuery, type FinanceQuery } from './agents/finance';
+import { getDoctorById } from './mock/doctors';
+import {
+  createSession, getSession, subscribe, unsubscribe, emit, emitAll,
+  type PendingMyRecords, type PlanRecordSummary, type PendingAppointments, type AppointmentSummary,
+  type PendingFinance, type CategoryStatus, type GoalSummary, type GoalPlanItem,
+} from './orchestrator/sessions';
 import { indexHotels, findHotelByName } from './orchestrator/hotelIndex';
-import { flightsSurface, hotelsSurface, roomsSurface, tripSummarySurface, myRecordsSurface, recordDetailSurface, destinationsSurface, hotelImage, roomImage, destinationImage, flightImage, flightDetails, hotelDetails, cabinPriceMultiplier } from './orchestrator/envelopes';
-import { db, type UserRow, type PlanRow } from './db';
+import {
+  flightsSurface, hotelsSurface, roomsSurface, tripSummarySurface, myRecordsSurface, recordDetailSurface,
+  destinationsSurface, doctorsSurface, doctorProfileSurface, doctorBookingFormSurface, appointmentConfirmationSurface,
+  appointmentsSurface, budgetBreakdownSurface, expenseLoggedSurface, savingsGoalSurface, savingsGoalsListSurface,
+  financeSummarySurface, portfolioSurface, goalsAnalysisSurface,
+  inr, formatAppointmentDate, hotelImage, roomImage, destinationImage, flightImage, flightDetails, hotelDetails, cabinPriceMultiplier,
+} from './orchestrator/envelopes';
+import {
+  db, type UserRow, type PlanRow, type AppointmentRow,
+  type FinanceProfileRow, type SavingsGoalRow,
+} from './db';
 import { newId, hashPassword, verifyPassword, signToken, toAuthUser, requireAuth, optionalAuth, type AuthUser } from './auth/auth';
 import { loadWeather } from './weather/weather';
 
@@ -54,6 +73,23 @@ app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth },
   const myRecords = detectMyRecordsIntent(query);
   if (myRecords) return handleMyRecordsQuery(myRecords, req.user);
 
+  // "My upcoming appointments" / "appointments today" / "past appointments
+  // with Dr. Rao" — checked before detectDoctorLookup below: "appointment
+  // with Dr. Rao" would otherwise match that function's own "mentions a
+  // doctor" heuristic and get misread as a request to view Dr. Rao's
+  // profile instead of the actual booked appointment.
+  const appointmentsQuery = detectAppointmentsQuery(query);
+  if (appointmentsQuery) return handleAppointmentsQuery(appointmentsQuery, req.user);
+
+  // "I earn 60000, rent is 20000..." / "spent 500 on groceries" / "save
+  // 50000 for a laptop" / "how much have I spent this month" — the
+  // personal finance agent. Entirely conversation-driven (no directory to
+  // search, nothing to book), and checked before parseIntent for the same
+  // reason every other domain-specific classifier above is: a fast,
+  // deterministic parser that never has to guess at a rupee amount.
+  const financeQuery = detectFinanceQuery(query);
+  if (financeQuery) return handleFinanceQuery(financeQuery, req.user);
+
   // "Best places to visit in X" / "where should I go" — inspiration, not a
   // flights/hotels search. Checked before parseIntent for the same reason
   // detectMyRecordsIntent is: a different kind of request, and a fast
@@ -70,6 +106,34 @@ app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth },
       intent: {
         intent: 'explore_destinations', destination: exploration.region, agents: [],
         summary: `Here are some great places to consider in ${exploration.region}${seasonPhrase} — explore one further, or schedule a trip whenever you're ready.`,
+      },
+    };
+  }
+
+  // "View profile for Dr. X" / "Book an appointment with Dr. X" — the two
+  // fixed templates App.tsx synthesizes for the doctor list's buttons (see
+  // detectDoctorLookup's own comment). A direct lookup, not a search, so no
+  // LLM call — same reasoning as the two checks above.
+  const doctorLookup = detectDoctorLookup(query);
+  if (doctorLookup) {
+    const doctor = findDoctorByName(doctorLookup.doctorName);
+    const session = createSession();
+    if (!doctor) {
+      return {
+        sessionId: session.id,
+        intent: { intent: 'refine', destination: '', agents: [], summary: `I couldn't find ${doctorLookup.doctorName} — they may not be listed anymore.` },
+      };
+    }
+    session.pendingDoctorLookup = doctor;
+    session.pendingDoctorView = doctorLookup.kind === 'book' ? 'book' : 'overview';
+    session.pendingDoctorHints = doctorLookup.hints;
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'find_doctor', destination: '', agents: [],
+        summary: doctorLookup.kind === 'book'
+          ? `Here's the booking form for ${doctor.name}.`
+          : `Here's ${doctor.name}'s full profile.`,
       },
     };
   }
@@ -150,8 +214,14 @@ app.get<{ Params: { sessionId: string } }>('/api/events/:sessionId', async (req,
     session.started = true;
     if (session.pendingMyRecords) {
       emitMyRecords(sessionId, session.pendingMyRecords);
+    } else if (session.pendingAppointments) {
+      emitAppointments(sessionId, session.pendingAppointments);
+    } else if (session.pendingFinance) {
+      emitFinance(sessionId, session.pendingFinance);
     } else if (session.pendingExploration) {
       runExploration(sessionId, session.pendingExploration);
+    } else if (session.pendingDoctorLookup) {
+      runDoctorLookup(sessionId, session.pendingDoctorLookup, session.pendingDoctorView, session.pendingDoctorHints);
     } else {
       const pending = session.pendingIntent as ParsedIntent | undefined;
       if (pending) runAgents(sessionId, pending);
@@ -176,6 +246,48 @@ function emitMyRecords(sessionId: string, pending: PendingMyRecords) {
   // alone — nothing further to render.
 }
 
+/** Renders whatever a chat-asked "my appointments" query resolved to — same
+ * deferred-until-SSE-connects reasoning as emitMyRecords. 'signin' and
+ * 'unsupported' carry everything needed in the intent summary alone. */
+function emitAppointments(sessionId: string, pending: PendingAppointments) {
+  // An empty result is fully explained by the chat summary alone ("You
+  // don't have any past appointments") — rendering an otherwise-blank card
+  // under it would look broken rather than "decent", so skip it.
+  if (pending.kind !== 'list' || pending.appointments.length === 0) return;
+  const base = pending.filter === 'today' ? "Today's Appointments"
+    : pending.filter === 'upcoming' ? 'Upcoming Appointments'
+    : pending.filter === 'past' ? 'Past Appointments'
+    : 'My Appointments';
+  emitAll(sessionId, appointmentsSurface('appointments', base, pending.appointments));
+}
+
+/** Renders whatever a chat-typed finance message resolved to — same
+ * deferred-until-SSE-connects reasoning as emitMyRecords/emitAppointments.
+ * 'signin', 'unsupported', and 'unclear' carry everything needed in the
+ * intent summary alone; an empty goals list is skipped the same way an
+ * empty appointments list is, for the same "decent, not broken" reason. */
+function emitFinance(sessionId: string, pending: PendingFinance) {
+  if (pending.kind === 'budget') {
+    emitAll(sessionId, budgetBreakdownSurface('finance', pending.income, pending.categories, pending.allocatedTotal));
+  } else if (pending.kind === 'expense_logged') {
+    emitAll(sessionId, expenseLoggedSurface('finance', pending.amount, pending.category, pending.note, pending.categoryStatus));
+  } else if (pending.kind === 'goal') {
+    emitAll(sessionId, savingsGoalSurface('finance', pending.goal));
+  } else if (pending.kind === 'goals_list' && pending.goals.length > 0) {
+    emitAll(sessionId, savingsGoalsListSurface('finance', pending.goals));
+  } else if (pending.kind === 'summary' && pending.categories.length > 0) {
+    emitAll(sessionId, financeSummarySurface('finance', pending.periodLabel, pending.categories, pending.totalSpent, pending.compare));
+  } else if (pending.kind === 'portfolio') {
+    emitAll(sessionId, portfolioSurface('finance', pending.income, pending.expenseTotal, pending.expenseSource, pending.categories, pending.goals, pending.savingsRate));
+  } else if (pending.kind === 'goals_analysis') {
+    emitAll(sessionId, goalsAnalysisSurface(
+      'finance', pending.income, pending.expenseTotal, pending.expenseSource, pending.disposable,
+      pending.goals, pending.totalRequired, pending.feasible, pending.shortfall, pending.surplus,
+      pending.cuts, pending.extensions, pending.singleGoalName, pending.notFoundName,
+    ));
+  }
+}
+
 /** Generates and renders the destination suggestions for a chat-asked
  * "best places to visit in X" query — deferred until the SSE stream
  * connects, same as every other agent-backed response in this app. */
@@ -185,6 +297,25 @@ function runExploration(sessionId: string, pending: NonNullable<ReturnType<typeo
     if (!getSession(sessionId)) return;
     emitAll(sessionId, destinationsSurface('destinations', pending.region, pending.season, pending.durationNights, destinations));
   });
+}
+
+/** Renders the profile+booking card for a "View profile for Dr. X"/"Book an
+ * appointment with Dr. X" lookup — populates the same session state
+ * (doctorsCache/activeDoctorId) the find_doctor flow's own viewDoctorProfile
+ * action does, so confirmAppointment works completely unchanged regardless
+ * of which path got the traveler to this card. */
+function runDoctorLookup(
+  sessionId: string, doctor: DoctorMatch, view?: 'overview' | 'book', hints?: { preferredDate?: string; preferredTime?: string }
+) {
+  const session = getSession(sessionId);
+  if (!session) return;
+  session.doctorsCache = new Map([[doctor.id, doctor]]);
+  session.activeDoctorId = doctor.id;
+  if (view === 'book') {
+    emitAll(sessionId, doctorBookingFormSurface('health', doctor, session.symptom, hints));
+  } else {
+    emitAll(sessionId, doctorProfileSurface('health', doctor));
+  }
 }
 
 function todayIso(): string {
@@ -308,6 +439,470 @@ function handleMyRecordsQuery(myRecords: MyRecordsIntent, user: AuthUser | undef
   };
 }
 
+/** Same shape/reasoning as queryUserRecords above, against the appointments
+ * table instead of plans — specialty isn't stored on the row itself (the
+ * doctor roster is static mock data, not worth duplicating), so it's
+ * resolved here via getDoctorById at query time instead. */
+function queryUserAppointments(userId: string, filter: 'upcoming' | 'past' | 'today' | 'all'): AppointmentSummary[] {
+  const rows = db.prepare(
+    'SELECT * FROM appointments WHERE user_id = ? ORDER BY preferred_date ASC, preferred_time ASC'
+  ).all(userId) as AppointmentRow[];
+
+  const today = todayIso();
+  let records: AppointmentSummary[] = rows.map((r) => ({
+    id: r.id, doctorName: r.doctor_name, specialty: getDoctorById(r.doctor_id)?.specialty || 'General Medicine',
+    hospitalName: r.hospital_name, patientName: r.patient_name, preferredDate: r.preferred_date,
+    preferredTime: r.preferred_time, appointmentRef: r.appointment_ref, createdAt: r.created_at,
+  }));
+
+  if (filter === 'today') records = records.filter((r) => r.preferredDate === today);
+  if (filter === 'upcoming') records = records.filter((r) => r.preferredDate >= today);
+  if (filter === 'past') {
+    records = records.filter((r) => r.preferredDate < today).sort((a, b) => b.preferredDate.localeCompare(a.preferredDate));
+  }
+  return records;
+}
+
+/** Best-effort match of a "my appointment with Dr. X" reference against an
+ * already-scoped list — substring either direction against doctor/specialty/
+ * hospital, same reasoning as findRecordByReference/findHotelByName: name
+ * matching here is a convenience filter, not an identity lookup. */
+function filterAppointmentsByReference(appointments: AppointmentSummary[], reference: string): AppointmentSummary[] {
+  const q = reference.trim().toLowerCase();
+  if (!q) return appointments;
+  return appointments.filter((a) => {
+    const doctor = a.doctorName.toLowerCase();
+    const specialty = a.specialty.toLowerCase();
+    const hospital = a.hospitalName.toLowerCase();
+    return doctor.includes(q) || q.includes(doctor.replace(/^dr\.?\s*/, '')) || specialty.includes(q) || hospital.includes(q);
+  });
+}
+
+/** Everything /api/plan needs to do for a chat-asked "my appointments"
+ * query — mirrors handleMyRecordsQuery; actual A2UI content is built once
+ * the SSE stream connects (see emitAppointments). */
+function handleAppointmentsQuery(query: AppointmentsQuery, user: AuthUser | undefined) {
+  const session = createSession();
+
+  if (query.kind === 'unsupported') {
+    // A decent, honest answer for something outside this app's scope,
+    // rather than either ignoring the request or pretending it worked.
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'refine', destination: '', agents: [],
+        summary: `I can't ${query.action} an appointment yet — this app only supports viewing and booking them for now. `
+          + `Please contact the hospital directly to ${query.action} it, or ask me to book a new one.`,
+      },
+    };
+  }
+
+  const filterLabel = query.filter === 'all' ? '' : query.filter === 'today' ? "today's " : `${query.filter} `;
+  if (!user) {
+    session.pendingAppointments = { kind: 'signin' };
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'refine', destination: '', agents: [],
+        summary: `Sign in from the sidebar to see your ${filterLabel}appointments — then ask me again.`,
+      },
+    };
+  }
+
+  let appointments = queryUserAppointments(user.id, query.filter);
+  let summary: string;
+  if (query.reference) {
+    const matched = filterAppointmentsByReference(appointments, query.reference);
+    if (matched.length) {
+      appointments = matched;
+      summary = `Here ${matched.length === 1 ? 'is' : 'are'} your ${filterLabel}appointment${matched.length === 1 ? '' : 's'} matching "${query.reference}":`;
+    } else {
+      summary = appointments.length
+        ? `I couldn't find a ${filterLabel}appointment matching "${query.reference}" — here's your full ${filterLabel}list instead.`
+        : `You don't have any ${filterLabel}appointments${appointments.length ? '' : ' at all'}, so nothing matches "${query.reference}" either.`;
+    }
+  } else {
+    summary = appointments.length ? `Here are your ${filterLabel}appointments:` : `You don't have any ${filterLabel}appointments.`;
+  }
+
+  session.pendingAppointments = { kind: 'list', appointments, filter: query.filter, reference: query.reference };
+  return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary } };
+}
+
+function monthRange(period: 'this_month' | 'last_month'): { start: string; end: string } {
+  const now = new Date();
+  const monthIdx = period === 'this_month' ? now.getMonth() : now.getMonth() - 1;
+  const start = new Date(now.getFullYear(), monthIdx, 1);
+  const end = new Date(now.getFullYear(), monthIdx + 1, 0);
+  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+}
+
+function getBudgetLimits(userId: string): Map<string, number> {
+  const rows = db.prepare('SELECT category, monthly_limit FROM budget_categories WHERE user_id = ?')
+    .all(userId) as { category: string; monthly_limit: number }[];
+  return new Map(rows.map((r) => [r.category, r.monthly_limit]));
+}
+
+function getCategorySpendMap(userId: string, start: string, end: string): Map<string, number> {
+  const rows = db.prepare(
+    'SELECT category, SUM(amount) as total FROM expenses WHERE user_id = ? AND spent_on BETWEEN ? AND ? GROUP BY category'
+  ).all(userId, start, end) as { category: string; total: number }[];
+  return new Map(rows.map((r) => [r.category, r.total]));
+}
+
+/** Union of every category that has either a limit or any logged spend —
+ * a category with neither simply never appears, same reasoning as only
+ * showing hospitals/doctors that actually matched a search. */
+function buildCategoryStatuses(limits: Map<string, number>, spend: Map<string, number>): CategoryStatus[] {
+  const categories = new Set([...limits.keys(), ...spend.keys()]);
+  return [...categories].map((category) => ({ category, spent: spend.get(category) || 0, limit: limits.get(category) }));
+}
+
+function getMonthlyIncome(userId: string): number | undefined {
+  const row = db.prepare('SELECT monthly_income FROM finance_profile WHERE user_id = ?').get(userId) as FinanceProfileRow | undefined;
+  return row?.monthly_income ?? undefined;
+}
+
+/** The monthly expense figure every planning calculation (portfolio,
+ * goals analysis) is built on: budget limits where the user has set them
+ * (their stated intent for the month), else actual logged spend this
+ * month (the only other honest number available) — never a mix of the
+ * two, and the caller is always told which source was used so the number
+ * on screen never looks more authoritative than it is. */
+function getPlanningExpenses(userId: string): { total: number; source: 'budget' | 'actual'; categories: CategoryStatus[] } {
+  const limits = getBudgetLimits(userId);
+  const { start, end } = monthRange('this_month');
+  const spend = getCategorySpendMap(userId, start, end);
+  const categories = buildCategoryStatuses(limits, spend);
+  if (limits.size > 0) {
+    return { total: [...limits.values()].reduce((s, v) => s + v, 0), source: 'budget', categories };
+  }
+  return { total: [...spend.values()].reduce((s, v) => s + v, 0), source: 'actual', categories };
+}
+
+/** Same fix as finance.ts's toLocalIsoDate — a locally-constructed Date
+ * rolls back a day through toISOString() in any timezone ahead of UTC. */
+function toLocalIsoDate(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+function monthsUntil(targetDate: string): number {
+  const now = new Date();
+  const target = new Date(targetDate);
+  const months = (target.getFullYear() - now.getFullYear()) * 12 + (target.getMonth() - now.getMonth());
+  return Math.max(1, months);
+}
+
+/** Turns a plain GoalSummary into the feasibility-math shape the analysis
+ * surface renders — null monthsRemaining/requiredMonthly for a goal with
+ * no target date (nothing to divide by; it stays progress-only). */
+function buildGoalPlanItem(g: GoalSummary, assumedTimeline = false): GoalPlanItem {
+  const remaining = Math.max(0, g.targetAmount - g.savedAmount);
+  if (!g.targetDate) return { ...g, remaining, monthsRemaining: null, requiredMonthly: null, assumedTimeline };
+  const monthsRemaining = monthsUntil(g.targetDate);
+  return { ...g, remaining, monthsRemaining, requiredMonthly: remaining / monthsRemaining, assumedTimeline };
+}
+
+// Categories suggested for cuts first, roughly most- to least-discretionary
+// — never Rent/Health/Education/Savings, which aren't the kind of spend a
+// budgeting tool should casually suggest trimming.
+const DISCRETIONARY_PRIORITY = ['Entertainment', 'Shopping', 'Other', 'Food', 'Transport', 'Bills & Utilities'] as const;
+
+/** When goals don't jointly fit inside disposable income, suggest which
+ * categories to trim and by how much — never applied automatically, only
+ * ever a suggestion the user can act on themselves. Spreads the shortfall
+ * across categories (at most 40% of any one category's current spend) so
+ * no single suggestion looks absurd. Reads whichever field getPlanningExpenses
+ * actually used as the expense baseline — budget limit when the user has
+ * set one (there's usually no logged spend yet to read instead), else
+ * actual spend — so a suggested cut is never measured against a number
+ * of 0 just because the OTHER field happened to be empty. */
+function suggestCuts(categories: CategoryStatus[], expenseSource: 'budget' | 'actual', shortfall: number): { category: string; cutBy: number }[] {
+  const suggestions: { category: string; cutBy: number }[] = [];
+  let remaining = shortfall;
+  for (const cat of DISCRETIONARY_PRIORITY) {
+    if (remaining <= 0) break;
+    const status = categories.find((c) => c.category === cat);
+    const available = (expenseSource === 'budget' ? status?.limit : status?.spent) || 0;
+    if (available <= 0) continue;
+    const cut = Math.min(remaining, Math.round(available * 0.4));
+    if (cut > 0) { suggestions.push({ category: cat, cutBy: cut }); remaining -= cut; }
+  }
+  return suggestions;
+}
+
+/** The alternative to cutting expenses: keep spending as-is and instead
+ * push each goal's date out — disposable income split across goals in
+ * proportion to how much each currently needs per month, so a goal
+ * needing more gets a proportionally bigger share rather than an even
+ * split that would starve the largest goal. */
+function suggestExtensions(disposable: number, items: GoalPlanItem[]): { name: string; newMonths: number; newDate: string }[] {
+  const dated = items.filter((g) => g.requiredMonthly !== null && g.remaining > 0);
+  const totalRequired = dated.reduce((s, g) => s + (g.requiredMonthly || 0), 0);
+  if (totalRequired <= 0 || disposable <= 0) return [];
+  return dated
+    .map((g) => {
+      const share = disposable * ((g.requiredMonthly || 0) / totalRequired);
+      const newMonths = share > 0 ? Math.ceil(g.remaining / share) : Infinity;
+      if (!Number.isFinite(newMonths)) return null;
+      const d = new Date();
+      d.setMonth(d.getMonth() + newMonths);
+      return { name: g.name, newMonths, newDate: toLocalIsoDate(d) };
+    })
+    .filter((e): e is { name: string; newMonths: number; newDate: string } => e !== null);
+}
+
+/** Everything /api/plan needs to do for a chat-typed finance message —
+ * unlike every other domain here, this one both reads AND writes on every
+ * call (setting a budget, logging a spend, updating a goal are all direct
+ * database writes, not just a lookup) — safe to do synchronously since
+ * better-sqlite3 is sync, same as confirmAppointment's insert. */
+function handleFinanceQuery(query: FinanceQuery, user: AuthUser | undefined) {
+  const session = createSession();
+
+  if (query.kind === 'unsupported') {
+    const advice = query.action === 'give investment advice' ? ' For investment decisions, please consult a licensed financial advisor.' : '';
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'refine', destination: '', agents: [],
+        summary: `I can't ${query.action} yet — this agent only tracks the budgets, expenses, and savings goals you describe here.${advice}`,
+      },
+    };
+  }
+  if (query.kind === 'unclear') {
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'refine', destination: '', agents: [],
+        summary: 'I can help with budgets, expenses, and savings goals — try describing your income and expenses, '
+          + 'logging a spend ("spent 500 on groceries"), or setting a goal ("save 50000 for a laptop by December").',
+      },
+    };
+  }
+  if (!user) {
+    session.pendingFinance = { kind: 'signin' };
+    return {
+      sessionId: session.id,
+      intent: { intent: 'refine', destination: '', agents: [], summary: "Sign in from the sidebar to start tracking your budget — then tell me again." },
+    };
+  }
+
+  if (query.kind === 'set_budget') {
+    if (query.income !== undefined) {
+      db.prepare(`
+        INSERT INTO finance_profile (user_id, monthly_income, updated_at) VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET monthly_income = excluded.monthly_income, updated_at = excluded.updated_at
+      `).run(user.id, query.income, new Date().toISOString());
+    }
+    for (const a of query.allocations) {
+      db.prepare(`
+        INSERT INTO budget_categories (id, user_id, category, monthly_limit, created_at) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(user_id, category) DO UPDATE SET monthly_limit = excluded.monthly_limit
+      `).run(newId(), user.id, a.category, a.amount, new Date().toISOString());
+    }
+
+    const income = getMonthlyIncome(user.id);
+    const limits = getBudgetLimits(user.id);
+    const { start, end } = monthRange('this_month');
+    const categories = buildCategoryStatuses(limits, getCategorySpendMap(user.id, start, end));
+    const allocatedTotal = [...limits.values()].reduce((s, v) => s + v, 0);
+    session.pendingFinance = { kind: 'budget', income, categories, allocatedTotal };
+
+    const parts: string[] = [];
+    if (query.income !== undefined) parts.push(`income set to ${inr(query.income)}`);
+    if (query.allocations.length) parts.push(`${query.allocations.length} categor${query.allocations.length === 1 ? 'y' : 'ies'} updated`);
+    return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary: `Got it — ${parts.join(' and ')}. Here's your budget:` } };
+  }
+
+  if (query.kind === 'log_expense') {
+    db.prepare('INSERT INTO expenses (id, user_id, category, amount, note, spent_on, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(newId(), user.id, query.category, query.amount, query.note || null, todayIso(), new Date().toISOString());
+
+    const limits = getBudgetLimits(user.id);
+    const { start, end } = monthRange('this_month');
+    const spend = getCategorySpendMap(user.id, start, end);
+    const status: CategoryStatus = { category: query.category, spent: spend.get(query.category) || 0, limit: limits.get(query.category) };
+    session.pendingFinance = { kind: 'expense_logged', amount: query.amount, category: query.category, note: query.note, categoryStatus: status };
+    return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary: `Logged ${inr(query.amount)} under ${query.category}.` } };
+  }
+
+  if (query.kind === 'set_goal') {
+    const existing = db.prepare('SELECT * FROM savings_goals WHERE user_id = ? AND name = ?').get(user.id, query.name) as SavingsGoalRow | undefined;
+    db.prepare(`
+      INSERT INTO savings_goals (id, user_id, name, target_amount, target_date, saved_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, name) DO UPDATE SET target_amount = excluded.target_amount, target_date = excluded.target_date
+    `).run(newId(), user.id, query.name, query.targetAmount, query.targetDate || null, existing?.saved_amount || 0, new Date().toISOString());
+
+    const goal: GoalSummary = { name: query.name, targetAmount: query.targetAmount, savedAmount: existing?.saved_amount || 0, targetDate: query.targetDate || null };
+    session.pendingFinance = { kind: 'goal', goal };
+    const byPhrase = query.targetDate ? ` by ${formatAppointmentDate(query.targetDate)}` : '';
+    return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary: `New goal set — ${inr(query.targetAmount)} for ${query.name}${byPhrase}.` } };
+  }
+
+  if (query.kind === 'contribute_goal') {
+    const goals = db.prepare('SELECT * FROM savings_goals WHERE user_id = ?').all(user.id) as SavingsGoalRow[];
+    let target: SavingsGoalRow | undefined;
+    if (query.name) {
+      const q = query.name.toLowerCase();
+      target = goals.find((g) => g.name.toLowerCase().includes(q) || q.includes(g.name.toLowerCase()));
+    } else if (goals.length === 1) {
+      target = goals[0];
+    }
+    if (!target) {
+      const summary = goals.length === 0
+        ? 'You don\'t have any savings goals yet — try "save 50000 for a laptop" first.'
+        : `Which goal do you mean? You have: ${goals.map((g) => g.name).join(', ')}.`;
+      return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary } };
+    }
+
+    const newSaved = target.saved_amount + query.amount;
+    db.prepare('UPDATE savings_goals SET saved_amount = ? WHERE id = ?').run(newSaved, target.id);
+    const goal: GoalSummary = { name: target.name, targetAmount: target.target_amount, savedAmount: newSaved, targetDate: target.target_date };
+    session.pendingFinance = { kind: 'goal', goal };
+    return {
+      sessionId: session.id,
+      intent: { intent: 'refine', destination: '', agents: [], summary: `Added ${inr(query.amount)} to ${target.name} — ${inr(newSaved)} of ${inr(target.target_amount)} so far.` },
+    };
+  }
+
+  if (query.kind === 'list_goals') {
+    const goals = db.prepare('SELECT * FROM savings_goals WHERE user_id = ? ORDER BY created_at DESC').all(user.id) as SavingsGoalRow[];
+    const summaries: GoalSummary[] = goals.map((g) => ({ name: g.name, targetAmount: g.target_amount, savedAmount: g.saved_amount, targetDate: g.target_date }));
+    session.pendingFinance = { kind: 'goals_list', goals: summaries };
+    return {
+      sessionId: session.id,
+      intent: { intent: 'refine', destination: '', agents: [], summary: summaries.length ? 'Here are your savings goals:' : 'You don\'t have any savings goals yet — try "save 50000 for a laptop".' },
+    };
+  }
+
+  if (query.kind === 'portfolio') {
+    const income = getMonthlyIncome(user.id);
+    const { total: expenseTotal, source: expenseSource, categories } = getPlanningExpenses(user.id);
+    const goalRows = db.prepare('SELECT * FROM savings_goals WHERE user_id = ? ORDER BY created_at DESC').all(user.id) as SavingsGoalRow[];
+    const goals: GoalSummary[] = goalRows.map((g) => ({ name: g.name, targetAmount: g.target_amount, savedAmount: g.saved_amount, targetDate: g.target_date }));
+    const savingsRate = income !== undefined && income > 0 ? Math.max(0, Math.round(((income - expenseTotal) / income) * 100)) : undefined;
+
+    session.pendingFinance = { kind: 'portfolio', income, expenseTotal, expenseSource, categories, goals, savingsRate };
+    const summary = income !== undefined
+      ? `Here's your portfolio — ${inr(income)} income vs ${inr(expenseTotal)} in ${expenseSource === 'budget' ? 'budgeted' : 'logged'} expenses.`
+      : `Here's your portfolio so far, based on ${inr(expenseTotal)} logged this month — tell me your monthly income too for the full picture.`;
+    return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary } };
+  }
+
+  if (query.kind === 'goals_analysis') {
+    const income = getMonthlyIncome(user.id);
+    const { total: expenseTotal, source: expenseSource, categories } = getPlanningExpenses(user.id);
+    const disposable = income !== undefined ? income - expenseTotal : undefined;
+    const savedGoals = db.prepare('SELECT * FROM savings_goals WHERE user_id = ?').all(user.id) as SavingsGoalRow[];
+
+    let items: GoalPlanItem[] = [];
+    let singleGoalName: string | undefined;
+    let notFoundName: string | undefined;
+
+    if (query.goalName) {
+      const q = query.goalName.toLowerCase();
+      const match = savedGoals.find((g) => g.name.toLowerCase().includes(q) || q.includes(g.name.toLowerCase()));
+      if (match) {
+        items = [buildGoalPlanItem({ name: match.name, targetAmount: match.target_amount, savedAmount: match.saved_amount, targetDate: match.target_date })];
+        singleGoalName = match.name;
+      } else if (query.adHocAmount !== undefined) {
+        const assumedTimeline = !query.adHocTargetDate;
+        const targetDate = query.adHocTargetDate || (() => { const d = new Date(); d.setMonth(d.getMonth() + 12); return toLocalIsoDate(d); })();
+        items = [buildGoalPlanItem({ name: query.goalName, targetAmount: query.adHocAmount, savedAmount: 0, targetDate }, assumedTimeline)];
+        singleGoalName = query.goalName;
+      } else {
+        notFoundName = query.goalName;
+      }
+    } else {
+      items = savedGoals.map((g) => buildGoalPlanItem({ name: g.name, targetAmount: g.target_amount, savedAmount: g.saved_amount, targetDate: g.target_date }));
+    }
+
+    const totalRequired = items.reduce((s, g) => s + (g.requiredMonthly || 0), 0);
+    const hasDatedGoal = items.some((g) => g.requiredMonthly !== null);
+    const feasible = disposable !== undefined && hasDatedGoal ? totalRequired <= disposable : undefined;
+    const shortfall = feasible === false && disposable !== undefined ? Math.round(totalRequired - disposable) : undefined;
+    const surplus = feasible === true && disposable !== undefined ? Math.round(disposable - totalRequired) : undefined;
+    const cuts = shortfall !== undefined ? suggestCuts(categories, expenseSource, shortfall) : undefined;
+    const extensions = shortfall !== undefined && disposable !== undefined ? suggestExtensions(disposable, items) : undefined;
+
+    session.pendingFinance = {
+      kind: 'goals_analysis', income, expenseTotal, expenseSource, disposable,
+      goals: items, totalRequired, feasible, shortfall, surplus, cuts, extensions, singleGoalName, notFoundName,
+    };
+
+    let summary: string;
+    if (notFoundName) {
+      summary = `You don't have a goal called "${notFoundName}" yet — try "save 50000 for ${notFoundName} by December" to set one.`;
+    } else if (items.length === 0) {
+      summary = 'You don\'t have any savings goals yet — try "save 50000 for a laptop by December".';
+    } else if (income === undefined) {
+      summary = "Here's your goals analysis — tell me your monthly income too so I can check if it's achievable.";
+    } else if (feasible === false) {
+      summary = `You're short by ${inr(shortfall || 0)}/month to hit ${items.length > 1 ? 'all your goals' : 'this goal'} on time — here's how to close the gap:`;
+    } else if (feasible === true) {
+      summary = `Good news — saving ${inr(totalRequired)}/month covers ${items.length > 1 ? 'all your goals' : 'this goal'}, leaving ${inr(surplus || 0)} spare.`;
+    } else {
+      summary = 'Set a target date on your goal(s) so I can calculate a monthly figure.';
+    }
+    return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary } };
+  }
+
+  // query.kind === 'summary'
+  const { start, end } = query.period === 'all' ? { start: '0000-01-01', end: '9999-12-31' } : monthRange(query.period);
+  const limits = getBudgetLimits(user.id);
+  let categories = buildCategoryStatuses(limits, getCategorySpendMap(user.id, start, end));
+  if (query.category) categories = categories.filter((c) => c.category === query.category);
+  const totalSpent = categories.reduce((s, c) => s + c.spent, 0);
+  const income = getMonthlyIncome(user.id);
+  const periodPhrase = query.period === 'this_month' ? 'this month' : query.period === 'last_month' ? 'last month' : 'in total';
+  const periodLabel = query.period === 'last_month' ? 'Last Month' : query.period === 'all' ? 'All-Time Spending' : 'This Month';
+
+  let compare: { current: number; previous: number } | undefined;
+  if (query.question === 'compare') {
+    const last = monthRange('last_month');
+    const lastTotal = [...getCategorySpendMap(user.id, last.start, last.end).values()].reduce((s, v) => s + v, 0);
+    compare = { current: totalSpent, previous: lastTotal };
+  }
+
+  session.pendingFinance = { kind: 'summary', periodLabel, categories, totalSpent, income, compare };
+
+  let summary: string;
+  if (categories.length === 0) {
+    summary = query.category ? `You haven't logged any ${query.category} spending ${periodPhrase}.` : `You haven't logged any spending ${periodPhrase}.`;
+  } else if (query.question === 'biggest') {
+    const top = [...categories].sort((a, b) => b.spent - a.spent)[0];
+    summary = `Your biggest expense ${periodPhrase} is ${top.category} (${inr(top.spent)}).`;
+  } else if (query.question === 'remaining' && query.category) {
+    const cat = categories[0];
+    summary = cat?.limit !== undefined
+      ? `You've spent ${inr(cat.spent)} of your ${inr(cat.limit)} ${query.category} budget — ${inr(Math.max(0, cat.limit - cat.spent))} left.`
+      : `You haven't set a budget limit for ${query.category} yet.`;
+  } else if (query.question === 'remaining') {
+    if (income !== undefined) {
+      const remaining = income - totalSpent;
+      summary = remaining >= 0
+        ? `You have ${inr(remaining)} left ${periodPhrase} out of ${inr(income)}.`
+        : `You're ${inr(Math.abs(remaining))} over your ${inr(income)} income ${periodPhrase}.`;
+    } else {
+      summary = 'Tell me your monthly income (e.g. "I earn 60000 a month") so I can tell you what\'s left.';
+    }
+  } else if (query.question === 'compare' && compare) {
+    const diff = compare.current - compare.previous;
+    summary = `You've spent ${inr(compare.current)} this month vs ${inr(compare.previous)} last month`
+      + (diff === 0 ? ' — about the same.' : diff > 0 ? `, ${inr(diff)} more.` : `, ${inr(Math.abs(diff))} less.`);
+  } else if (query.category) {
+    summary = `You've spent ${inr(totalSpent)} on ${query.category} ${periodPhrase}.`;
+  } else {
+    summary = `You've spent ${inr(totalSpent)} ${periodPhrase}.`;
+  }
+
+  return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary } };
+}
+
 function runAgents(sessionId: string, intent: ParsedIntent) {
   const session = getSession(sessionId);
   if (!session) return;
@@ -381,9 +976,19 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
       emitAll(sessionId, hotelsSurface('hotels', hotels));
     });
   }
+
+  // find_doctor: pure matching against the curated dataset, no LLM call and
+  // no async wait — emitted synchronously, unlike flights/hotels/destinations
+  // above, since there's no live generation step to wait on.
+  if (intent.agents.includes('health')) {
+    const matches = getDoctorMatches(intent.specialty, intent.ageGroup);
+    session.doctorsCache = new Map(matches.map((d) => [d.id, d]));
+    session.symptom = intent.symptom;
+    emitAll(sessionId, doctorsSurface('health', normalizeSpecialty(intent.specialty), matches));
+  }
 }
 
-app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', async (req, reply) => {
+app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHandler: optionalAuth }, async (req, reply) => {
   const { sessionId, name, context } = req.body;
   const session = getSession(sessionId);
   if (!session) return reply.code(404).send({ error: 'unknown session' });
@@ -536,6 +1141,38 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', async (
       if (needsGuestName) session.trip.guestName = guestName;
       session.trip.bookingRef = `VOY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
       emitAll(sessionId, tripSummarySurface('trip', session.trip));
+    }
+  }
+
+  // viewDoctorProfile/startDoctorBooking and backToDoctors are no longer
+  // handled here — App.tsx intercepts the first two client-side and
+  // synthesizes a genuinely new chat turn instead (see detectDoctorLookup
+  // in agents/health.ts), and there's no "back" button left to fire the
+  // third (see doctorProfileSurface's own comment on why).
+
+  if (name === 'confirmAppointment') {
+    const doctor = session.activeDoctorId ? (session.doctorsCache.get(session.activeDoctorId) as DoctorMatch | undefined) : undefined;
+    const patientName = String(context.patientName || '').trim();
+    const patientPhone = String(context.patientPhone || '').trim();
+    const preferredDate = String(context.preferredDate || '').trim();
+    const preferredTime = String(context.preferredTime || '').trim();
+    if (doctor && patientName && patientPhone && preferredDate && preferredTime) {
+      const appointmentRef = `APT-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      db.prepare(`
+        INSERT INTO appointments (
+          id, user_id, doctor_id, doctor_name, hospital_name, patient_name, patient_age,
+          patient_gender, patient_phone, patient_email, reason, preferred_date, preferred_time,
+          appointment_ref, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        newId(), req.user?.id ?? null, doctor.id, doctor.name, doctor.hospital.name, patientName,
+        String(context.patientAge || '') || null, String(context.patientGender || '') || null,
+        patientPhone, String(context.patientEmail || '') || null, String(context.reason || '') || null,
+        preferredDate, preferredTime, appointmentRef, new Date().toISOString()
+      );
+      emitAll(sessionId, appointmentConfirmationSurface(
+        'health', doctor, doctor.hospital, patientName, preferredDate, preferredTime, appointmentRef
+      ));
     }
   }
 

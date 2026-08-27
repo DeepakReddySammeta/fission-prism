@@ -67,7 +67,7 @@ export function Node({ store, surface, componentId, scope, onAction }: RenderPro
     }
     case 'Image': {
       const url = store.text(comp.url, ctx);
-      return <A2Image url={url} fit={comp.fit} />;
+      return <A2Image url={url} fit={comp.fit} componentId={comp.id} />;
     }
     case 'Icon': {
       const label = comp.label ? store.text(comp.label, ctx) : '';
@@ -91,12 +91,67 @@ export function Node({ store, surface, componentId, scope, onAction }: RenderPro
       const tone = (comp.tone ? store.text(comp.tone, ctx) : '') || 'neutral';
       return <Badge variant={BADGE_VARIANT[tone] || 'secondary'} className="whitespace-nowrap">{text}</Badge>;
     }
+    case 'Bar': {
+      // A simple horizontal progress/spend bar — the finance agent's
+      // budget breakdowns and savings-goal trackers are the first things
+      // in this app that need a data-viz primitive; everything before this
+      // reused Text/Badge/Image, so this is a genuinely new catalog kind.
+      const raw = store.resolve(comp.value, ctx);
+      const pct = Math.max(0, Math.min(100, Number(raw) || 0));
+      const tone = (comp.tone ? store.text(comp.tone, ctx) : '') || 'brand';
+      const label = comp.label ? store.text(comp.label, ctx) : '';
+      return (
+        <div className="a2-bar">
+          {label && <div className="a2-bar-label">{label}</div>}
+          <div className="a2-bar-track">
+            <div className={`a2-bar-fill a2-bar-${tone}`} style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      );
+    }
+    case 'Pie': {
+      // Category-breakdown donut for the finance portfolio/goals-analysis
+      // cards — a CSS conic-gradient wedge chart rather than hand-computed
+      // SVG arc paths, since the browser can do the angle math for free
+      // and this only ever needs to render once per envelope (no live
+      // per-slice data binding the way List rows need).
+      const data: Array<{ label: string; value: number }> = Array.isArray(comp.data) ? comp.data : [];
+      const total = data.reduce((s, d) => s + (Number(d.value) || 0), 0);
+      const colors = ['#8c8060', '#5c5647', '#b8ad8a', '#423e34', '#d9d2bc', '#a89b7a', '#6f6549', '#c9c3b3', '#847a5f', '#e0dac8'];
+      let cumulative = 0;
+      const stops = total > 0
+        ? data.map((d, i) => {
+            const start = (cumulative / total) * 360;
+            cumulative += Number(d.value) || 0;
+            const end = (cumulative / total) * 360;
+            return `${colors[i % colors.length]} ${start}deg ${end}deg`;
+          })
+        : [];
+      const gradient = stops.length ? `conic-gradient(${stops.join(', ')})` : 'conic-gradient(var(--paper-dim) 0deg 360deg)';
+      return (
+        <div className="a2-pie-wrap">
+          <div className="a2-pie" style={{ background: gradient }}>
+            <div className="a2-pie-hole" />
+          </div>
+          {data.length > 0 && (
+            <div className="a2-pie-legend">
+              {data.map((d, i) => (
+                <div key={d.label} className="a2-pie-legend-item">
+                  <span className="a2-pie-swatch" style={{ background: colors[i % colors.length] }} />
+                  <span>{d.label} — {total > 0 ? Math.round(((Number(d.value) || 0) / total) * 100) : 0}%</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
     case 'Divider':
       return <div className="a2-divider" />;
     case 'Row':
-      return <div className="a2-row" style={rowColStyle(comp)}>{kids(comp.children)}</div>;
+      return <div className="a2-row" data-cid={comp.id} style={rowColStyle(comp)}>{kids(comp.children)}</div>;
     case 'Column':
-      return <div className="a2-column" style={rowColStyle(comp)}>{kids(comp.children)}</div>;
+      return <div className="a2-column" data-cid={comp.id} style={rowColStyle(comp)}>{kids(comp.children)}</div>;
     case 'List':
       return <div className="a2-list">{kids(comp.children)}</div>;
     case 'Card':
@@ -191,7 +246,7 @@ export function Node({ store, surface, componentId, scope, onAction }: RenderPro
   }
 }
 
-function A2Image({ url, fit }: { url: string; fit?: string }) {
+function A2Image({ url, fit, componentId }: { url: string; fit?: string; componentId?: string }) {
   const [state, setState] = useState<'loading' | 'loaded' | 'error'>(url ? 'loading' : 'error');
   // The url arrives async (a separate updateDataModel envelope after the
   // component tree), so it's often empty on first mount — re-derive the
@@ -199,13 +254,13 @@ function A2Image({ url, fit }: { url: string; fit?: string }) {
   React.useEffect(() => setState(url ? 'loading' : 'error'), [url]);
   if (!url || state === 'error') {
     return (
-      <div className="a2-img a2-img-fallback" aria-hidden>
+      <div className="a2-img a2-img-fallback" data-cid={componentId} aria-hidden>
         <span>{'🏙'}</span>
       </div>
     );
   }
   return (
-    <div className="a2-img-wrap">
+    <div className="a2-img-wrap" data-cid={componentId}>
       {state === 'loading' && <div className="a2-img-shimmer" />}
       <img
         className="a2-img"
@@ -223,7 +278,8 @@ function A2Image({ url, fit }: { url: string; fit?: string }) {
 function TabsNode({ store, surface, comp, scope, onAction }: { store: A2UIStore; surface: SurfaceState; comp: ComponentDef; scope: string; onAction: (a: ActionPayload) => void }) {
   const tabs: Array<{ id: string; label: string }> = comp.tabs || [];
   const panels: Record<string, string> = comp.panels || {};
-  const [active, setActive] = useState(tabs[0]?.id);
+  const initial = comp.defaultTab && panels[comp.defaultTab] ? comp.defaultTab : tabs[0]?.id;
+  const [active, setActive] = useState(initial);
   return (
     <Tabs value={active} onValueChange={setActive}>
       <TabsList>

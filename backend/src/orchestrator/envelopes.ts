@@ -1,7 +1,9 @@
 import type {
-  ComponentDef, DestinationSuggestion, Envelope, FlightOption, HotelOption, RoomOption, TripSummary,
+  ComponentDef, DestinationSuggestion, DoctorOption, Envelope, FlightOption, HospitalOption, HotelOption, RoomOption, TripSummary,
 } from '../types';
-import type { PlanRecordSummary } from './sessions';
+import type { DoctorMatch, BookingHints } from '../agents/health';
+import { APPOINTMENT_TIME_SLOTS } from '../agents/health';
+import type { PlanRecordSummary, AppointmentSummary, CategoryStatus, GoalSummary, GoalPlanItem } from './sessions';
 import { A2UI_VERSION, CATALOG_ID } from '../types';
 
 /* ---------------- Curated imagery ----------------
@@ -88,6 +90,23 @@ export const destinationSuggestionImage = (bestFor: string, seed: string) => {
 };
 
 export const flightImage = (seed: string) => unsplash(FLIGHT_IDS[hashStr(seed) % FLIGHT_IDS.length], 800, 520);
+
+/** Doctor photos are NOT hashed/pooled like the ones above — each doctor in
+ * mock/doctors.ts carries its own specific, individually-verified,
+ * gender-matched photoSeed, fixed at curation time (see that file). This
+ * just resolves that exact seed to a URL, deterministically, with no
+ * selection logic of its own. */
+export const doctorPhoto = (photoSeed: string) => unsplash(photoSeed, 400, 400);
+
+/** A few real hospital names already end in their own area ("Apollo
+ * Hospitals, Jubilee Hills", "CARE Hospitals, Banjara Hills") — appending
+ * "· <area>" unconditionally then repeats it ("...Jubilee Hills · Jubilee
+ * Hills"). Only appends the area when it isn't already part of the name. */
+function hospitalLine(hospital: HospitalOption): string {
+  return hospital.name.toLowerCase().includes(hospital.area.toLowerCase())
+    ? `🏥 ${hospital.name}`
+    : `🏥 ${hospital.name} · ${hospital.area}`;
+}
 
 const env = (msg: Envelope) => msg;
 
@@ -799,5 +818,787 @@ export function recordDetailSurface(surfaceId: string, record: PlanRecordSummary
   return [
     createSurface(surfaceId, 'Trip Details', '#1c1e2e'),
     { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+  ];
+}
+
+/* ---------------- My appointments (chat-asked) ---------------- */
+
+/** A chat-typed "my upcoming appointments"/"past appointments with Dr. X"
+ * query renders this — one row per booked appointment, doctor-first (same
+ * emphasis as the doctor list/profile cards) with the hospital, patient,
+ * date/time and reference all visible without a further "view details"
+ * click, since unlike a saved trip there's no richer breakdown behind it.
+ * `formatAppointmentDate` (defined below, hoisted) keeps the date reading
+ * "Fri 28 August" here too, matching the confirmation card. */
+export function appointmentsSurface(surfaceId: string, label: string, appts: AppointmentSummary[]): Envelope[] {
+  const rows = appts.map((a) => ({
+    ...a,
+    patientLabel: `Patient: ${a.patientName}`,
+    dateLabel: `${formatAppointmentDate(a.preferredDate)} · ${a.preferredTime}`,
+    refLabel: `Booked · ${a.appointmentRef}`,
+  }));
+
+  return [
+    createSurface(surfaceId, 'My Appointments', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', children: ['head', 'list'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: label },
+          { id: 'list', component: 'List', children: { path: '/appointments', componentId: 'appt_row' } },
+
+          { id: 'appt_row', component: 'Row', gap: 16, justify: 'between', wrap: true, children: ['appt_left', 'appt_right'] },
+          { id: 'appt_left', component: 'Column', gap: 4, children: ['appt_top', 'appt_hospital', 'appt_patient'] },
+          { id: 'appt_top', component: 'Row', gap: 8, align: 'center', wrap: true, children: ['appt_doctor', 'appt_specialty'] },
+          { id: 'appt_doctor', component: 'Text', variant: 'h3', text: { path: 'doctorName' } },
+          { id: 'appt_specialty', component: 'Badge', tone: 'brand', text: { path: 'specialty' } },
+          { id: 'appt_hospital', component: 'Text', variant: 'caption', text: { path: 'hospitalName' } },
+          { id: 'appt_patient', component: 'Text', variant: 'caption', text: { path: 'patientLabel' } },
+
+          // align: 'end' — a Column's children default to stretching full
+          // width; right-aligning keeps the date and badge compact instead
+          // of the badge stretching the same way earlier health cards' did
+          // before that fix (see doctorProfileSurface's book_btn_row).
+          { id: 'appt_right', component: 'Column', gap: 4, align: 'end', children: ['appt_date', 'appt_ref'] },
+          { id: 'appt_date', component: 'Text', variant: 'body', text: { path: 'dateLabel' } },
+          { id: 'appt_ref', component: 'Badge', tone: 'success', text: { path: 'refLabel' } },
+        ],
+      },
+    },
+    updateData(surfaceId, '/appointments', rows),
+  ];
+}
+
+/* ---------------- Find a doctor ---------------- */
+
+/** The doctor-first list — hospital shown, deliberately secondary (a
+ * caption line under the doctor's own name/rating, never its own heading)
+ * per the explicit "highlight the doctor, mention the hospital" design. */
+export function doctorsSurface(surfaceId: string, specialty: string, doctors: DoctorMatch[]): Envelope[] {
+  const rows = doctors.map((d) => ({
+    ...d,
+    photoUrl: doctorPhoto(d.photoSeed),
+    expertiseLabel: d.expertise.slice(0, 2).join(' · '),
+    languagesLabel: d.languages.join(', '),
+    hospitalLine: hospitalLine(d.hospital),
+    ratingLabel: `${d.rating.toFixed(1)}★`,
+    feeLabel: `₹${d.consultationFee} consultation`,
+  }));
+
+  return [
+    createSurface(surfaceId, 'Find a Doctor', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', gap: 12, children: ['head', 'subhead', 'disclaimer', 'list'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: `${specialty} specialists` },
+          { id: 'subhead', component: 'Text', variant: 'caption', text: 'Best-rated doctors for this, with the hospital they practice at.' },
+          {
+            id: 'disclaimer', component: 'Text', variant: 'caption',
+            text: 'Illustrative profiles for this demo — always confirm directly with the hospital.',
+          },
+          // A grid, not a vertical list — see the `.surface-health .a2-list`
+          // rule in styles.css, scoped so only this surface's list turns
+          // into a 2-column grid of cards; flights/hotels/destinations keep
+          // their normal full-width rows.
+          { id: 'list', component: 'List', children: { path: '/doctors', componentId: 'doc_row' } },
+
+          // A Column, not a Row: a vertical card (photo on top) reads far
+          // better at half-width in a 2-up grid than a wide horizontal row
+          // would — the same content that worked full-width for one hotel
+          // per line would wrap awkwardly at half that width.
+          { id: 'doc_row', component: 'Column', gap: 6, children: ['dr_img', 'dr_top', 'dr_qual', 'dr_expertise', 'dr_languages', 'dr_hospital', 'dr_fee', 'dr_actions'] },
+          { id: 'dr_img', component: 'Image', url: { path: 'photoUrl' } },
+          { id: 'dr_top', component: 'Row', align: 'center', gap: 8, wrap: true, children: ['dr_name', 'dr_rating'] },
+          { id: 'dr_name', component: 'Text', variant: 'h3', text: { path: 'name' } },
+          { id: 'dr_rating', component: 'Badge', tone: 'success', text: { path: 'ratingLabel' } },
+          { id: 'dr_qual', component: 'Text', variant: 'caption', text: { path: 'qualifications' } },
+          { id: 'dr_expertise', component: 'Text', variant: 'caption', text: { path: 'expertiseLabel' } },
+          { id: 'dr_languages', component: 'Text', variant: 'caption', text: { path: 'languagesLabel' } },
+          { id: 'dr_hospital', component: 'Text', variant: 'caption', text: { path: 'hospitalLine' } },
+          { id: 'dr_fee', component: 'Text', variant: 'caption', text: { path: 'feeLabel' } },
+          { id: 'dr_actions', component: 'Row', gap: 8, wrap: true, children: ['view_btn', 'book_btn'] },
+          { id: 'view_btn_label', component: 'Text', text: 'View Profile' },
+          {
+            // Handled entirely client-side (App.tsx intercepts this action
+            // name before it would otherwise POST to the backend) — it
+            // synthesizes "View profile for Dr. X" as a genuinely new chat
+            // message, the same client-side-synthesis pattern already
+            // proven for exploreDestination/viewRecordDetail, rather than
+            // this same card silently swapping its own content in place.
+            id: 'view_btn', component: 'Button', variant: 'outline', child: 'view_btn_label',
+            action: { event: { name: 'viewDoctorProfile', context: { name: { path: 'name' } } } },
+          },
+          { id: 'book_btn_label', component: 'Text', text: 'Book Appointment' },
+          {
+            id: 'book_btn', component: 'Button', variant: 'primary', child: 'book_btn_label',
+            action: { event: { name: 'startDoctorBooking', context: { name: { path: 'name' } } } },
+          },
+        ],
+      },
+    },
+    updateData(surfaceId, '/doctors', rows),
+  ];
+}
+
+function doctorDataModel(doctor: DoctorMatch) {
+  return {
+    id: doctor.id, name: doctor.name, qualifications: doctor.qualifications, specialty: doctor.specialty,
+    photoUrl: doctorPhoto(doctor.photoSeed), ratingLabel: `${doctor.rating.toFixed(1)}★`,
+    experienceLabel: `${doctor.yearsExperience} yrs experience`, bio: doctor.bio,
+    hospitalLine: hospitalLine(doctor.hospital),
+    // Single "Label: value" lines rather than a label above its own value —
+    // the profile card's read-only facts don't need two lines' worth of
+    // vertical room and a whole row of leftover horizontal space each.
+    opdLine: `OPD timings: ${doctor.opdTimings}`,
+    feeLine: `Consultation fee: ₹${doctor.consultationFee}`,
+    addressLine: `Hospital: ${doctor.hospital.name}, ${doctor.hospital.address}`,
+  };
+}
+
+/** The drill-down: full profile, read-only, laid out as a horizontal card
+ * (photo left, everything else right) so it actually fills the width a
+ * chat-turn card gets instead of leaving a large empty gutter next to a
+ * narrow vertical stack. Ends in a single "Book Appointment" button —
+ * handled client-side (App.tsx intercepts this action name), which
+ * synthesizes a fresh "Book an appointment with Dr. X" chat turn rather
+ * than swapping this card's own content in place, so booking always gets
+ * its own dedicated form/card (see doctorBookingFormSurface) instead of
+ * being a second tab bolted onto this one. */
+export function doctorProfileSurface(surfaceId: string, doctor: DoctorMatch): Envelope[] {
+  const expertiseIds = doctor.expertise.map((_, i) => `exp_${i}`);
+
+  return [
+    createSurface(surfaceId, 'Find a Doctor', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          // No back button: this card is always its own chat turn now (a
+          // fresh "View profile" message and response, same as the
+          // destinations drill-down), never an in-place replacement of a
+          // still-visible list — there's nothing to go "back" to here.
+          // align: 'start' — a Row's default cross-axis behavior stretches
+          // both children to the same height, which was stretching the
+          // photo column down to match the much-taller info column and
+          // leaving all of that extra height as blank space below the
+          // (fixed-size) photo itself.
+          { id: 'body', component: 'Row', gap: 20, align: 'start', wrap: true, children: ['photo_col', 'info_col'] },
+          { id: 'photo_col', component: 'Column', gap: 0, children: ['hero_img'] },
+          { id: 'hero_img', component: 'Image', url: { path: 'doctor/photoUrl' } },
+
+          {
+            id: 'info_col', component: 'Column', gap: 10, weight: 1,
+            children: [
+              'head', 'meta_row', 'hospital_line', 'bio_text',
+              'expertise_label', 'expertise_row', 'opd_line', 'fee_line', 'address_line', 'book_btn_row',
+            ],
+          },
+          { id: 'head', component: 'Column', gap: 2, children: ['doc_name', 'doc_qual'] },
+          { id: 'doc_name', component: 'Text', variant: 'h2', text: { path: 'doctor/name' } },
+          { id: 'doc_qual', component: 'Text', variant: 'caption', text: { path: 'doctor/qualifications' } },
+          { id: 'meta_row', component: 'Row', gap: 8, align: 'center', wrap: true, children: ['rating_badge', 'specialty_badge', 'exp_badge'] },
+          { id: 'rating_badge', component: 'Badge', tone: 'success', text: { path: 'doctor/ratingLabel' } },
+          { id: 'specialty_badge', component: 'Badge', tone: 'brand', text: { path: 'doctor/specialty' } },
+          { id: 'exp_badge', component: 'Badge', tone: 'neutral', text: { path: 'doctor/experienceLabel' } },
+          { id: 'hospital_line', component: 'Text', variant: 'caption', text: { path: 'doctor/hospitalLine' } },
+          { id: 'bio_text', component: 'Text', variant: 'body', text: { path: 'doctor/bio' } },
+          { id: 'expertise_label', component: 'Text', variant: 'caption', text: 'Areas of expertise' },
+          { id: 'expertise_row', component: 'Row', gap: 8, wrap: true, children: expertiseIds },
+          ...doctor.expertise.map((text, i): ComponentDef => ({ id: `exp_${i}`, component: 'Badge', tone: 'neutral', text })),
+          // Single "Label: value" lines instead of a caption label stacked
+          // above its own value — half the vertical space, and no more
+          // short lines leaving a wide empty margin to their right.
+          { id: 'opd_line', component: 'Text', variant: 'caption', text: { path: 'doctor/opdLine' } },
+          { id: 'fee_line', component: 'Text', variant: 'caption', text: { path: 'doctor/feeLine' } },
+          { id: 'address_line', component: 'Text', variant: 'caption', text: { path: 'doctor/addressLine' } },
+
+          // Wrapped in its own Row so the button takes its natural width
+          // instead of stretching to fill the info column — a Column's
+          // children stretch to full cross-axis width by default, which
+          // was making this single CTA look like an oversized banner.
+          { id: 'book_btn_row', component: 'Row', children: ['book_btn'] },
+          { id: 'book_btn_label', component: 'Text', text: 'Book Appointment' },
+          {
+            id: 'book_btn', component: 'Button', variant: 'primary', child: 'book_btn_label',
+            action: { event: { name: 'startDoctorBooking', context: { name: { path: 'doctor/name' } } } },
+          },
+        ],
+      },
+    },
+    updateData(surfaceId, '/doctor', doctorDataModel(doctor)),
+  ];
+}
+
+/** A dedicated card for booking, reached only via the "Book Appointment"
+ * button (list or profile) or a chat request that already reads as a
+ * booking ask — never bundled into the profile card as a tab, so it's
+ * always a fresh, focused form rather than one more thing sharing space
+ * on an already-busy card. Prefills whatever the request already told us
+ * (a symptom becomes the visit reason; a named date/time — "tomorrow
+ * morning", "on Friday at 3pm" — becomes the date/time picks) so the
+ * patient isn't re-typing what they already said. */
+export function doctorBookingFormSurface(
+  surfaceId: string, doctor: DoctorMatch, symptom?: string, hints?: BookingHints
+): Envelope[] {
+  return [
+    createSurface(surfaceId, 'Find a Doctor', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          {
+            id: 'body', component: 'Column', gap: 14,
+            children: ['head', 'doctor_line', 'patient_row', 'contact_row', 'reason_field', 'date_row', 'time_label', 'time_row', 'book_error', 'confirm_btn_row'],
+          },
+          { id: 'head', component: 'Text', variant: 'h2', text: 'Book an appointment' },
+          { id: 'doctor_line', component: 'Text', variant: 'caption', text: { path: 'doctor/summaryLine' } },
+          { id: 'patient_row', component: 'Row', gap: 12, wrap: true, children: ['name_field', 'age_field', 'gender_field'] },
+          { id: 'name_field', component: 'TextField', label: 'Patient name', path: '/booking/patientName', placeholder: 'Full name' },
+          { id: 'age_field', component: 'TextField', label: 'Age', inputType: 'number', path: '/booking/patientAge' },
+          { id: 'gender_field', component: 'ChoicePicker', label: 'Gender', options: ['Male', 'Female', 'Other'], path: '/booking/patientGender' },
+          { id: 'contact_row', component: 'Row', gap: 12, wrap: true, children: ['phone_field', 'email_field'] },
+          { id: 'phone_field', component: 'TextField', label: 'Phone', path: '/booking/patientPhone', placeholder: '10-digit mobile number' },
+          { id: 'email_field', component: 'TextField', label: 'Email (optional)', path: '/booking/patientEmail', placeholder: 'you@example.com' },
+          { id: 'reason_field', component: 'TextField', label: 'Reason for visit', path: '/booking/reason' },
+          { id: 'date_row', component: 'Row', gap: 12, children: ['date_field'] },
+          {
+            id: 'date_field', component: 'TextField', label: 'Preferred date', inputType: 'date',
+            path: '/booking/preferredDate', min: { path: '/booking/dateMin' },
+          },
+          { id: 'time_label', component: 'Text', variant: 'caption', text: 'Preferred time' },
+          { id: 'time_row', component: 'ChoicePicker', options: APPOINTMENT_TIME_SLOTS, path: '/booking/preferredTime' },
+          { id: 'book_error', component: 'Text', variant: 'caption', text: { path: '/booking/error' } },
+          // Wrapped in its own Row — same fix as doctorProfileSurface's
+          // book_btn_row — so the button takes its natural width instead
+          // of a Column's default full-width stretch.
+          { id: 'confirm_btn_row', component: 'Row', children: ['confirm_btn'] },
+          {
+            id: 'confirm_btn', component: 'Button', variant: 'primary', child: 'confirm_btn_label',
+            checks: [
+              { call: 'required', args: { value: { path: '/booking/patientName' } }, message: 'Enter the patient name.' },
+              { call: 'required', args: { value: { path: '/booking/patientPhone' } }, message: 'Enter a contact phone number.' },
+              { call: 'required', args: { value: { path: '/booking/preferredDate' } }, message: 'Pick a preferred date.' },
+              { call: 'required', args: { value: { path: '/booking/preferredTime' } }, message: 'Pick a preferred time.' },
+            ],
+            action: {
+              event: {
+                name: 'confirmAppointment',
+                context: {
+                  doctorId: { path: 'doctor/id' },
+                  patientName: { path: '/booking/patientName' },
+                  patientAge: { path: '/booking/patientAge' },
+                  patientGender: { path: '/booking/patientGender' },
+                  patientPhone: { path: '/booking/patientPhone' },
+                  patientEmail: { path: '/booking/patientEmail' },
+                  reason: { path: '/booking/reason' },
+                  preferredDate: { path: '/booking/preferredDate' },
+                  preferredTime: { path: '/booking/preferredTime' },
+                },
+              },
+            },
+          },
+          { id: 'confirm_btn_label', component: 'Text', text: 'Confirm Appointment' },
+        ],
+      },
+    },
+    updateData(surfaceId, '/doctor', {
+      ...doctorDataModel(doctor),
+      summaryLine: `${doctor.name} · ${doctor.specialty} — ${hospitalLine(doctor.hospital)}`,
+    }),
+    updateData(surfaceId, '/booking', {
+      patientName: '', patientAge: '', patientGender: '', patientPhone: '', patientEmail: '',
+      reason: symptom || '', preferredDate: hints?.preferredDate || '', preferredTime: hints?.preferredTime || '',
+      error: '', dateMin: new Date().toISOString().slice(0, 10),
+    }),
+  ];
+}
+
+const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS_LONG = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/** "2026-08-28" -> "Fri 28 August" — the raw ISO date the <input type=date>
+ * gives us reads fine in a form field but not in a confirmation someone
+ * actually has to remember; spelling out the weekday and month makes it
+ * unambiguous at a glance. Built manually (not toLocaleDateString) so the
+ * exact wording doesn't drift with server locale. */
+export function formatAppointmentDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${WEEKDAYS_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_LONG[d.getMonth()]}`;
+}
+
+/** Replaces the booking form with a plain confirmation once
+ * confirmAppointment succeeds — same surfaceId, so it's the natural next
+ * screen rather than a separate surface the user has to find. */
+export function appointmentConfirmationSurface(
+  surfaceId: string, doctor: DoctorOption, hospital: HospitalOption,
+  patientName: string, preferredDate: string, preferredTime: string, appointmentRef: string
+): Envelope[] {
+  return [
+    createSurface(surfaceId, 'Find a Doctor', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          // 'confirm_body' (not the generic 'body' every other health card
+          // uses) so styles.css can size just this card narrower — a
+          // 4-line receipt doesn't need the same width the photo+details
+          // profile card does.
+          { id: 'root', component: 'Card', child: 'confirm_body' },
+          { id: 'confirm_body', component: 'Column', gap: 10, children: ['head', 'line1', 'line2', 'line3', 'ref_row'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: 'Appointment confirmed' },
+          { id: 'line1', component: 'Text', variant: 'body', text: `${patientName}, with ${doctor.name} (${doctor.specialty})` },
+          { id: 'line2', component: 'Text', variant: 'body', text: `${hospital.name} · ${hospital.area}` },
+          { id: 'line3', component: 'Text', variant: 'body', text: `${formatAppointmentDate(preferredDate)} at ${preferredTime}` },
+          // Wrapped in a Row so the badge stays a compact pill instead of
+          // stretching to the column's full width (see book_btn_row in
+          // doctorProfileSurface for the same fix).
+          { id: 'ref_row', component: 'Row', children: ['ref_badge'] },
+          { id: 'ref_badge', component: 'Badge', tone: 'success', text: `Booked · ${appointmentRef}` },
+        ],
+      },
+    },
+  ];
+}
+
+/* ---------------- Personal Finance / Budget ----------------
+ * Purely conversation-driven — no buttons, no directory to search, no
+ * booking flow. Each of these renders whatever the current message added
+ * (a budget, a logged expense, a goal, a summary), always as a compact
+ * single-column card (see the .surface-finance width cap in styles.css) —
+ * a bar chart needs the same "don't stretch it wider than its content"
+ * care a lone button did in the doctor agent, just applied to a track
+ * instead of a button. */
+
+export const inr = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+
+function toneForSpend(status: CategoryStatus): string {
+  if (!status.limit) return 'brand';
+  if (status.spent > status.limit) return 'danger';
+  if (status.spent / status.limit >= 0.8) return 'warning';
+  return 'success';
+}
+
+/** A "I earn X, rent is Y, food is Z..." statement renders this — one bar
+ * per category (limit-aware: green under 80%, amber near the limit, red
+ * over it), plus how much of the stated income is still unallocated. */
+export function budgetBreakdownSurface(
+  surfaceId: string, income: number | undefined, categories: CategoryStatus[], allocatedTotal: number
+): Envelope[] {
+  const rows = categories.map((c) => ({
+    category: c.category,
+    amountLabel: c.limit ? `${inr(c.spent)} / ${inr(c.limit)}` : inr(c.spent),
+    pct: c.limit ? Math.min(100, Math.round((c.spent / c.limit) * 100)) : 0,
+    tone: toneForSpend(c),
+  }));
+
+  const children = ['head'];
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 14, children },
+    { id: 'head', component: 'Text', variant: 'h2', text: 'Your Budget' },
+  ];
+  if (income !== undefined) {
+    children.push('income_line');
+    components.push({ id: 'income_line', component: 'Text', variant: 'body', text: `Monthly income: ${inr(income)}` });
+  }
+  children.push('list');
+  components.push(
+    { id: 'list', component: 'List', children: { path: '/categories', componentId: 'cat_row' } },
+    { id: 'cat_row', component: 'Column', gap: 4, children: ['cat_top', 'cat_bar'] },
+    { id: 'cat_top', component: 'Row', justify: 'between', children: ['cat_name', 'cat_amount'] },
+    { id: 'cat_name', component: 'Text', variant: 'body', text: { path: 'category' } },
+    { id: 'cat_amount', component: 'Text', variant: 'caption', text: { path: 'amountLabel' } },
+    { id: 'cat_bar', component: 'Bar', value: { path: 'pct' }, tone: { path: 'tone' } },
+  );
+  if (income !== undefined) {
+    const remaining = income - allocatedTotal;
+    children.push('divider_1', 'remaining_row');
+    components.push(
+      { id: 'divider_1', component: 'Divider' },
+      { id: 'remaining_row', component: 'Row', justify: 'between', children: ['remaining_label', 'remaining_value'] },
+      { id: 'remaining_label', component: 'Text', variant: 'h3', text: remaining >= 0 ? 'Unallocated' : 'Over your income' },
+      { id: 'remaining_value', component: 'Text', variant: 'h3', text: inr(Math.abs(remaining)) },
+    );
+  }
+
+  return [
+    createSurface(surfaceId, 'Budget', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    updateData(surfaceId, '/categories', rows),
+  ];
+}
+
+/** A single logged expense — confirms what was recorded and shows that
+ * category's updated month-to-date status, so the effect of the message is
+ * immediately visible without a separate "show my budget" follow-up. */
+export function expenseLoggedSurface(
+  surfaceId: string, amount: number, category: string, note: string | undefined, status: CategoryStatus
+): Envelope[] {
+  const pct = status.limit ? Math.min(100, Math.round((status.spent / status.limit) * 100)) : 0;
+  return [
+    createSurface(surfaceId, 'Expense Logged', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', gap: 12, children: ['head', 'line', 'cat_top', 'cat_bar'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: 'Expense logged' },
+          { id: 'line', component: 'Text', variant: 'body', text: `${inr(amount)} · ${category}${note ? ` · ${note}` : ''}` },
+          { id: 'cat_top', component: 'Row', justify: 'between', children: ['cat_label', 'cat_amount'] },
+          { id: 'cat_label', component: 'Text', variant: 'caption', text: `${category} this month` },
+          {
+            id: 'cat_amount', component: 'Text', variant: 'caption',
+            text: status.limit ? `${inr(status.spent)} / ${inr(status.limit)}` : inr(status.spent),
+          },
+          { id: 'cat_bar', component: 'Bar', value: pct, tone: toneForSpend(status) },
+        ],
+      },
+    },
+  ];
+}
+
+/** One savings goal's progress — reached via "save X for Y" or a follow-up
+ * "add X to my Y fund" contribution. */
+export function savingsGoalSurface(surfaceId: string, goal: GoalSummary): Envelope[] {
+  const pct = goal.targetAmount > 0 ? Math.min(100, Math.round((goal.savedAmount / goal.targetAmount) * 100)) : 0;
+  const remaining = Math.max(0, goal.targetAmount - goal.savedAmount);
+
+  const children = ['head', 'goal_bar', 'goal_meta'];
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 12, children },
+    { id: 'head', component: 'Text', variant: 'h2', text: goal.name },
+    {
+      id: 'goal_bar', component: 'Bar', value: pct, tone: pct >= 100 ? 'success' : 'brand',
+      label: `${inr(goal.savedAmount)} of ${inr(goal.targetAmount)} (${pct}%)`,
+    },
+    {
+      id: 'goal_meta', component: 'Text', variant: 'caption',
+      text: pct >= 100 ? 'Goal reached! 🎉' : `${inr(remaining)} left to go`,
+    },
+  ];
+  if (goal.targetDate) {
+    children.push('goal_date');
+    components.push({ id: 'goal_date', component: 'Text', variant: 'caption', text: `Target date: ${formatAppointmentDate(goal.targetDate)}` });
+  }
+
+  return [
+    createSurface(surfaceId, 'Savings Goal', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+  ];
+}
+
+/** "Show my savings goals" — every goal at once, each with its own bar. */
+export function savingsGoalsListSurface(surfaceId: string, goals: GoalSummary[]): Envelope[] {
+  const rows = goals.map((g) => {
+    const pct = g.targetAmount > 0 ? Math.min(100, Math.round((g.savedAmount / g.targetAmount) * 100)) : 0;
+    return {
+      name: g.name, pct, tone: pct >= 100 ? 'success' : 'brand',
+      metaLabel: `${inr(g.savedAmount)} of ${inr(g.targetAmount)} (${pct}%)`,
+    };
+  });
+
+  return [
+    createSurface(surfaceId, 'Savings Goals', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', children: ['head', 'list'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: 'Savings Goals' },
+          { id: 'list', component: 'List', children: { path: '/goals', componentId: 'goal_row' } },
+          { id: 'goal_row', component: 'Column', gap: 4, children: ['goal_name', 'goal_bar_row', 'goal_meta'] },
+          { id: 'goal_name', component: 'Text', variant: 'h3', text: { path: 'name' } },
+          { id: 'goal_bar_row', component: 'Bar', value: { path: 'pct' }, tone: { path: 'tone' } },
+          { id: 'goal_meta', component: 'Text', variant: 'caption', text: { path: 'metaLabel' } },
+        ],
+      },
+    },
+    updateData(surfaceId, '/goals', rows),
+  ];
+}
+
+/** "How much have I spent this month" / "biggest category" / "compare this
+ * month vs last month" — a ranked breakdown (biggest category naturally
+ * sorts to the top, answering that question just by looking), with an
+ * optional vs-last-month delta line. */
+export function financeSummarySurface(
+  surfaceId: string, periodLabel: string, categories: CategoryStatus[], totalSpent: number,
+  compare?: { current: number; previous: number }
+): Envelope[] {
+  const rows = [...categories]
+    .sort((a, b) => b.spent - a.spent)
+    .map((c) => ({
+      category: c.category, amountLabel: inr(c.spent),
+      pct: totalSpent > 0 ? Math.round((c.spent / totalSpent) * 100) : 0,
+    }));
+
+  const children = ['head'];
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 14, children },
+    { id: 'head', component: 'Text', variant: 'h2', text: periodLabel },
+  ];
+  if (compare) {
+    const diff = compare.current - compare.previous;
+    const diffLabel = diff === 0 ? 'Same total as last month' : `${diff > 0 ? '+' : '-'}${inr(Math.abs(diff))} vs last month`;
+    children.push('compare_line');
+    components.push({ id: 'compare_line', component: 'Text', variant: 'caption', text: diffLabel });
+  }
+  children.push('total_row');
+  components.push(
+    { id: 'total_row', component: 'Row', justify: 'between', children: ['total_label', 'total_value'] },
+    { id: 'total_label', component: 'Text', variant: 'h3', text: 'Total spent' },
+    { id: 'total_value', component: 'Text', variant: 'h3', text: inr(totalSpent) },
+  );
+  if (rows.length) {
+    children.push('divider_1', 'list');
+    components.push(
+      { id: 'divider_1', component: 'Divider' },
+      { id: 'list', component: 'List', children: { path: '/categories', componentId: 'sum_row' } },
+      { id: 'sum_row', component: 'Column', gap: 4, children: ['sum_top', 'sum_bar'] },
+      { id: 'sum_top', component: 'Row', justify: 'between', children: ['sum_name', 'sum_amount'] },
+      { id: 'sum_name', component: 'Text', variant: 'body', text: { path: 'category' } },
+      { id: 'sum_amount', component: 'Text', variant: 'caption', text: { path: 'amountLabel' } },
+      { id: 'sum_bar', component: 'Bar', value: { path: 'pct' }, tone: 'brand' },
+    );
+  }
+
+  return [
+    createSurface(surfaceId, 'Spending Summary', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    ...(rows.length ? [updateData(surfaceId, '/categories', rows)] : []),
+  ];
+}
+
+/** "Give me my portfolio" — the one-screen financial overview: income vs
+ * expenses, a savings-rate headline, a category-spend donut, and a compact
+ * list of every goal's progress. Unlike the other finance surfaces this
+ * deliberately mixes several already-existing shapes (Bar's tone logic,
+ * the goal-row pattern from savingsGoalsListSurface) into one card, since
+ * "a real dashboard" was the explicit ask — one screen, not a link to
+ * three others. */
+export function portfolioSurface(
+  surfaceId: string, income: number | undefined, expenseTotal: number, expenseSource: 'budget' | 'actual',
+  categories: CategoryStatus[], goals: GoalSummary[], savingsRate: number | undefined
+): Envelope[] {
+  const pieRows = categories.filter((c) => c.spent > 0).map((c) => ({ label: c.category, value: c.spent }));
+  const goalRows = goals.map((g) => {
+    const pct = g.targetAmount > 0 ? Math.min(100, Math.round((g.savedAmount / g.targetAmount) * 100)) : 0;
+    return { name: g.name, pct, tone: pct >= 100 ? 'success' : 'brand', metaLabel: `${inr(g.savedAmount)} of ${inr(g.targetAmount)} (${pct}%)` };
+  });
+
+  const children = ['head'];
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 16, children },
+    { id: 'head', component: 'Text', variant: 'h2', text: 'Your Portfolio' },
+  ];
+
+  if (income !== undefined) {
+    const disposable = income - expenseTotal;
+    children.push('stats_row');
+    components.push(
+      { id: 'stats_row', component: 'Row', justify: 'between', children: ['stat_income', 'stat_expense', 'stat_disposable'] },
+      { id: 'stat_income', component: 'Column', gap: 2, children: ['stat_income_label', 'stat_income_value'] },
+      { id: 'stat_income_label', component: 'Text', variant: 'caption', text: 'Income' },
+      { id: 'stat_income_value', component: 'Text', variant: 'h3', text: inr(income) },
+      { id: 'stat_expense', component: 'Column', gap: 2, children: ['stat_expense_label', 'stat_expense_value'] },
+      { id: 'stat_expense_label', component: 'Text', variant: 'caption', text: expenseSource === 'budget' ? 'Budgeted' : 'Spent' },
+      { id: 'stat_expense_value', component: 'Text', variant: 'h3', text: inr(expenseTotal) },
+      { id: 'stat_disposable', component: 'Column', gap: 2, children: ['stat_disposable_label', 'stat_disposable_value'] },
+      { id: 'stat_disposable_label', component: 'Text', variant: 'caption', text: disposable >= 0 ? 'Left over' : 'Over budget' },
+      { id: 'stat_disposable_value', component: 'Text', variant: 'h3', text: inr(Math.abs(disposable)) },
+    );
+    if (savingsRate !== undefined) {
+      children.push('savings_rate_line');
+      components.push({ id: 'savings_rate_line', component: 'Text', variant: 'caption', text: `Savings rate: ${savingsRate}% of income` });
+    }
+  } else {
+    children.push('no_income_line');
+    components.push({ id: 'no_income_line', component: 'Text', variant: 'body', text: `Spent so far this month: ${inr(expenseTotal)}` });
+  }
+
+  if (pieRows.length) {
+    children.push('divider_pie', 'pie_label', 'pie');
+    components.push(
+      { id: 'divider_pie', component: 'Divider' },
+      { id: 'pie_label', component: 'Text', variant: 'h3', text: 'Where it went' },
+      { id: 'pie', component: 'Pie', data: pieRows },
+    );
+  }
+
+  if (goalRows.length) {
+    children.push('divider_goals', 'goals_label', 'goals_list');
+    components.push(
+      { id: 'divider_goals', component: 'Divider' },
+      { id: 'goals_label', component: 'Text', variant: 'h3', text: 'Goals' },
+      { id: 'goals_list', component: 'List', children: { path: '/goals', componentId: 'pf_goal_row' } },
+      { id: 'pf_goal_row', component: 'Column', gap: 4, children: ['pf_goal_name', 'pf_goal_bar', 'pf_goal_meta'] },
+      { id: 'pf_goal_name', component: 'Text', variant: 'body', text: { path: 'name' } },
+      { id: 'pf_goal_bar', component: 'Bar', value: { path: 'pct' }, tone: { path: 'tone' } },
+      { id: 'pf_goal_meta', component: 'Text', variant: 'caption', text: { path: 'metaLabel' } },
+    );
+  }
+
+  return [
+    createSurface(surfaceId, 'Portfolio', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    ...(goalRows.length ? [updateData(surfaceId, '/goals', goalRows)] : []),
+  ];
+}
+
+/** "Give me my goals analysis" / "how do I achieve my emergency fund goal"
+ * — per-goal required-monthly-savings math (server.ts does the actual
+ * arithmetic; this only renders it), plus, when the goals don't jointly
+ * fit inside disposable income, both an expense-cut suggestion and a
+ * timeline-extension suggestion side by side — never applied automatically,
+ * just shown, matching the rest of this agent's read-only-analysis stance. */
+export function goalsAnalysisSurface(
+  surfaceId: string,
+  income: number | undefined, expenseTotal: number, expenseSource: 'budget' | 'actual', disposable: number | undefined,
+  goals: GoalPlanItem[], totalRequired: number, feasible: boolean | undefined, shortfall: number | undefined, surplus: number | undefined,
+  cuts: { category: string; cutBy: number }[] | undefined, extensions: { name: string; newMonths: number; newDate: string }[] | undefined,
+  singleGoalName: string | undefined, notFoundName: string | undefined
+): Envelope[] {
+  const title = singleGoalName ? `Achieving: ${singleGoalName}` : 'Goals Analysis';
+
+  if (notFoundName) {
+    return [
+      createSurface(surfaceId, 'Goals Analysis', '#f25011'),
+      {
+        version: A2UI_VERSION,
+        updateComponents: {
+          surfaceId,
+          components: [
+            { id: 'root', component: 'Card', child: 'body' },
+            { id: 'body', component: 'Column', gap: 8, children: ['head', 'line'] },
+            { id: 'head', component: 'Text', variant: 'h2', text: 'Goal not found' },
+            { id: 'line', component: 'Text', variant: 'body', text: `You don't have a goal called "${notFoundName}" yet.` },
+          ],
+        },
+      },
+    ];
+  }
+
+  const goalRows = goals.map((g) => ({
+    name: g.name,
+    remainingLabel: `${inr(g.remaining)} left of ${inr(g.targetAmount)}`,
+    dateLabel: g.assumedTimeline
+      ? `Assuming ${g.monthsRemaining} months (no date set)`
+      : g.targetDate ? `By ${formatAppointmentDate(g.targetDate)}` : 'No target date set',
+    requiredLabel: g.requiredMonthly !== null ? `${inr(g.requiredMonthly)}/month needed` : 'Set a target date to calculate a monthly figure',
+  }));
+
+  const children = ['head'];
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 14, children },
+    { id: 'head', component: 'Text', variant: 'h2', text: title },
+  ];
+
+  if (income !== undefined && disposable !== undefined) {
+    children.push('stats_row');
+    components.push(
+      { id: 'stats_row', component: 'Row', justify: 'between', children: ['stat_income', 'stat_expense', 'stat_disposable'] },
+      { id: 'stat_income', component: 'Column', gap: 2, children: ['stat_income_label', 'stat_income_value'] },
+      { id: 'stat_income_label', component: 'Text', variant: 'caption', text: 'Income' },
+      { id: 'stat_income_value', component: 'Text', variant: 'h3', text: inr(income) },
+      { id: 'stat_expense', component: 'Column', gap: 2, children: ['stat_expense_label', 'stat_expense_value'] },
+      { id: 'stat_expense_label', component: 'Text', variant: 'caption', text: expenseSource === 'budget' ? 'Budgeted' : 'Spent' },
+      { id: 'stat_expense_value', component: 'Text', variant: 'h3', text: inr(expenseTotal) },
+      { id: 'stat_disposable', component: 'Column', gap: 2, children: ['stat_disposable_label', 'stat_disposable_value'] },
+      { id: 'stat_disposable_label', component: 'Text', variant: 'caption', text: 'Available to save' },
+      { id: 'stat_disposable_value', component: 'Text', variant: 'h3', text: inr(disposable) },
+      { id: 'divider_stats', component: 'Divider' },
+    );
+    children.push('divider_stats');
+  } else {
+    children.push('no_income_line');
+    components.push({ id: 'no_income_line', component: 'Text', variant: 'body', text: "Tell me your monthly income too so I can check what's achievable." });
+  }
+
+  if (goalRows.length) {
+    children.push('list');
+    components.push(
+      { id: 'list', component: 'List', children: { path: '/goals', componentId: 'ga_row' } },
+      { id: 'ga_row', component: 'Column', gap: 3, children: ['ga_name', 'ga_remaining', 'ga_date', 'ga_required'] },
+      { id: 'ga_name', component: 'Text', variant: 'h3', text: { path: 'name' } },
+      { id: 'ga_remaining', component: 'Text', variant: 'caption', text: { path: 'remainingLabel' } },
+      { id: 'ga_date', component: 'Text', variant: 'caption', text: { path: 'dateLabel' } },
+      { id: 'ga_required', component: 'Text', variant: 'body', text: { path: 'requiredLabel' } },
+    );
+  } else {
+    children.push('no_goals_line');
+    components.push({ id: 'no_goals_line', component: 'Text', variant: 'body', text: 'You don\'t have any savings goals yet — try "save 50000 for a laptop by December".' });
+  }
+
+  if (feasible !== undefined && goalRows.length) {
+    children.push('divider_verdict', 'verdict_row');
+    components.push(
+      { id: 'divider_verdict', component: 'Divider' },
+      { id: 'verdict_row', component: 'Row', justify: 'between', children: ['verdict_label', 'verdict_value'] },
+      { id: 'verdict_label', component: 'Text', variant: 'h3', text: feasible ? 'On track' : 'Short by (per month)' },
+      {
+        id: 'verdict_value', component: 'Text', variant: 'h3',
+        text: feasible ? `+${inr(surplus || 0)} spare` : inr(shortfall || 0),
+      },
+    );
+
+    if (!feasible) {
+      if (cuts && cuts.length) {
+        children.push('cuts_label', 'cuts_list');
+        const cutRows = cuts.map((c) => ({ line: `Cut ${c.category} by ${inr(c.cutBy)}/month` }));
+        components.push(
+          { id: 'cuts_label', component: 'Text', variant: 'h3', text: 'Option 1 — trim expenses' },
+          { id: 'cuts_list', component: 'List', children: { path: '/cuts', componentId: 'cut_row' } },
+          { id: 'cut_row', component: 'Text', variant: 'body', text: { path: 'line' } },
+        );
+      }
+      if (extensions && extensions.length) {
+        if (cuts && cuts.length) children.push('divider_options');
+        components.push({ id: 'divider_options', component: 'Divider' });
+        children.push('ext_label', 'ext_list');
+        const extRows = extensions.map((e) => ({ line: `${e.name}: push the date to ${formatAppointmentDate(e.newDate)} (${e.newMonths} months)` }));
+        components.push(
+          { id: 'ext_label', component: 'Text', variant: 'h3', text: 'Option 2 — extend the timeline' },
+          { id: 'ext_list', component: 'List', children: { path: '/extensions', componentId: 'ext_row' } },
+          { id: 'ext_row', component: 'Text', variant: 'body', text: { path: 'line' } },
+        );
+      }
+    }
+  }
+
+  const dataEnvelopes: Envelope[] = [];
+  if (goalRows.length) dataEnvelopes.push(updateData(surfaceId, '/goals', goalRows));
+  if (!feasible && cuts && cuts.length) dataEnvelopes.push(updateData(surfaceId, '/cuts', cuts.map((c) => ({ line: `Cut ${c.category} by ${inr(c.cutBy)}/month` }))));
+  if (!feasible && extensions && extensions.length) {
+    dataEnvelopes.push(updateData(surfaceId, '/extensions', extensions.map((e) => ({ line: `${e.name}: push the date to ${formatAppointmentDate(e.newDate)} (${e.newMonths} months)` }))));
+  }
+
+  return [
+    createSurface(surfaceId, 'Goals Analysis', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    ...dataEnvelopes,
   ];
 }

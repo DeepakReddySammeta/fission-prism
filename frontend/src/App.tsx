@@ -11,7 +11,7 @@ import { Stepper } from './components/Stepper';
 import { NEW_CHAT_EVENT } from './shell/plannerBus';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { fmtDuration, addDays, CABIN_CLASSES, cabinMultiplier, cabinBaggageKg } from '@/lib/utils';
+import { fmtDuration, addDays, formatAppointmentDate, CABIN_CLASSES, cabinMultiplier, cabinBaggageKg } from '@/lib/utils';
 import { useVoiceSearch } from '@/lib/useVoiceSearch';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
@@ -174,6 +174,17 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
         if (region) plan(`Plan a trip to ${region} for ${nights} nights`);
         return;
       }
+      if (action.name === 'viewDoctorProfile' || action.name === 'startDoctorBooking') {
+        // Same client-side-synthesis pattern as exploreDestination above —
+        // a genuinely new chat turn, not this same list card silently
+        // swapping to a profile card in place. The two fixed phrasings here
+        // are matched exactly by detectDoctorLookup on the backend (see
+        // that function's own comment) — never natural language a person
+        // actually types, so there's no ambiguity to resolve.
+        const name = String(action.context.name || '').trim();
+        if (name) plan(action.name === 'startDoctorBooking' ? `Book an appointment with ${name}` : `View profile for ${name}`);
+        return;
+      }
       if (!sessionId) return;
       if (action.name === 'selectRoom') {
         const rooms: any[] = store.surfaces.get('hotels')?.dataModel?.rooms || [];
@@ -183,13 +194,27 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
       if (action.name === 'bookTrip') {
         pushMessage('🎉 Booking confirmed! Check the trip summary alongside for your reference number.');
       }
+      if (action.name === 'confirmAppointment') {
+        // The doctor's name/hospital aren't part of this action's own
+        // context (only the id is) — read them from the surface's already-
+        // resolved data model, the same way selectRoom above reads the room
+        // list rather than duplicating that data into the action context.
+        const doctor = store.surfaces.get('health')?.dataModel?.doctor as { name?: string } | undefined;
+        pushMessage(
+          `✅ Appointment confirmed with ${doctor?.name || 'the doctor'} on ${formatAppointmentDate(String(action.context.preferredDate || ''))} `
+          + `at ${action.context.preferredTime}. The reference will show on the confirmation above.`
+        );
+      }
       fetch(`${API}/api/action`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ ...action, sessionId }),
       });
     },
-    [sessionId, store, pushMessage, plan]
+    [sessionId, store, pushMessage, plan, token]
   );
 
   const confirmFlight = useCallback(() => {
@@ -288,9 +313,20 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // area, not the trip-rail sidebar (that only watches surfaceId 'trip').
   const recordsSurface = store.surfaces.get('records');
   const recordDetailSurface = store.surfaces.get('recordDetail');
+  // A chat-asked "my upcoming appointments"/"past appointments" query —
+  // its own surfaceId, same reasoning as recordsSurface above.
+  const appointmentsSurface = store.surfaces.get('appointments');
+  // The personal finance agent — a budget breakdown, a logged expense, a
+  // savings goal, or a spending summary, depending on what was typed. No
+  // buttons/actions of its own — purely conversation-driven.
+  const financeSurface = store.surfaces.get('finance');
   // "Best places to visit in X" — inspiration, not a flights/hotels search;
   // its own surface so it renders alongside (never instead of) those.
   const destinationsSurface = store.surfaces.get('destinations');
+  // "I have chest pain" / "find me a dentist" — doctor list, drill-down
+  // profile, and the appointment form/confirmation all share this one
+  // surfaceId, the same way hotels list vs. rooms detail do.
+  const healthSurface = store.surfaces.get('health');
 
   const expectedAgents = intent?.agents || [];
   const flightsPending = expectedAgents.includes('flights') && !(flightsSurface && flightsSurface.components.size > 0);
@@ -360,9 +396,36 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
             </div>
           )}
 
+          {healthSurface && healthSurface.components.size > 0 && (
+            // Keyed the same way the hotels list/room-detail swap is —
+            // doctor list, one doctor's profile+booking form, and the
+            // booking confirmation all share this surfaceId, and without a
+            // key change React would patch the DOM in place instead of
+            // replaying the fade-in across what's really three different
+            // screens.
+            <div
+              className="reveal"
+              key={healthSurface.components.has('panel_book') ? 'profile' : healthSurface.components.has('ref_badge') ? 'confirmed' : 'list'}
+            >
+              <Surface store={store} surface={healthSurface} onAction={onAction} className="surface-health" />
+            </div>
+          )}
+
           {recordsSurface && recordsSurface.components.size > 0 && !(recordDetailSurface && recordDetailSurface.components.size > 0) && (
             <div className="reveal">
               <Surface store={store} surface={recordsSurface} onAction={onAction} className="surface-records" />
+            </div>
+          )}
+
+          {appointmentsSurface && appointmentsSurface.components.size > 0 && (
+            <div className="reveal">
+              <Surface store={store} surface={appointmentsSurface} onAction={onAction} className="surface-appointments" />
+            </div>
+          )}
+
+          {financeSurface && financeSurface.components.size > 0 && (
+            <div className="reveal">
+              <Surface store={store} surface={financeSurface} onAction={onAction} className="surface-finance" />
             </div>
           )}
 

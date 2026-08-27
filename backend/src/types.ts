@@ -26,7 +26,7 @@ export interface ComponentDef {
 }
 
 export type CatalogComponent =
-  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge'
+  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge' | 'Bar' | 'Pie'
   | 'Row' | 'Column' | 'List' | 'Card' | 'Tabs'
   | 'Button' | 'TextField' | 'CheckBox' | 'Slider' | 'ChoicePicker';
 
@@ -69,7 +69,7 @@ export interface ActionPayload {
 
 /** The allowlist. Backend validates against this; frontend enforces it again. */
 export const CATALOG_COMPONENTS: CatalogComponent[] = [
-  'Text', 'Image', 'Icon', 'Divider', 'Badge',
+  'Text', 'Image', 'Icon', 'Divider', 'Badge', 'Bar', 'Pie',
   'Row', 'Column', 'List', 'Card', 'Tabs',
   'Button', 'TextField', 'CheckBox', 'Slider', 'ChoicePicker',
 ];
@@ -81,14 +81,17 @@ export const CATALOG_FUNCTIONS = [
 
 /* ---------------- Domain types (trip planning) ---------------- */
 
-export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations';
+export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations' | 'find_doctor';
 
 export interface ParsedIntent {
   intent: IntentKind;
   origin?: string;
+  /** For "find_doctor", this is unused (destination is a travel concept) —
+   * always "" for that intent. Kept required rather than optional so every
+   * other intent path (which does rely on it) can't accidentally forget it. */
   destination: string;
   durationNights?: number;
-  agents: Array<'flights' | 'hotels'>;
+  agents: Array<'flights' | 'hotels' | 'health'>;
   /** free-text constraint carried over from a refinement message, e.g. "cheaper", "5-star only" */
   refinement?: string;
   /** best-effort ISO dates (YYYY-MM-DD) extracted from the query, if present */
@@ -124,6 +127,19 @@ export interface ParsedIntent {
   /** a short, friendly one-liner introducing the results — always present,
    * LLM-generated when available, templated otherwise. */
   summary: string;
+
+  /* ---- "find_doctor" only ---- */
+  /** The complaint verbatim, e.g. "migraine for 2 days" — carried through so
+   * it can pre-fill the appointment form's reason-for-visit field later. */
+  symptom?: string;
+  /** The inferred specialist category, e.g. "Cardiology" — must be one of
+   * SPECIALTIES in agents/health.ts to actually match a doctor; anything
+   * else falls back to General Medicine (see health.ts). */
+  specialty?: string;
+  /** Only set when the message implies an age bracket ("my son", "my
+   * 70-year-old father") — refines matching within a specialty rather than
+   * replacing it (see health.ts for exactly how). */
+  ageGroup?: 'child' | 'adult' | 'senior';
 }
 
 export interface FlightOption {
@@ -184,6 +200,62 @@ export interface DestinationSuggestion {
 export interface PlanRequest {
   query: string;
   sessionId?: string;
+}
+
+/* ---------------- Find a doctor ----------------
+ * Both hospitals and doctors are a fixed, hand-curated dataset
+ * (backend/src/mock/hospitals.ts, doctors.ts) — never LLM-generated. Real
+ * hospitals, fictional (but consistent, gender-verified) doctor identities.
+ * See agents/health.ts for exactly why. */
+
+export interface HospitalOption {
+  id: string;
+  name: string;
+  area: string;
+  address: string;
+  phone: string;
+  /** e.g. ["NABH", "NABL"] — omit rather than guess if not verified. */
+  accreditation: string[];
+  /** Headline specialties/facilities shown on the hospital's own card —
+   * not necessarily exhaustive, just what's worth highlighting. */
+  highlights: string[];
+}
+
+export interface DoctorOption {
+  id: string;
+  name: string;
+  gender: 'male' | 'female';
+  qualifications: string;
+  specialty: string;
+  /** e.g. ["Interventional Cardiology", "Angioplasty"] */
+  expertise: string[];
+  yearsExperience: number;
+  languages: string[];
+  rating: number;
+  consultationFee: number;
+  /** e.g. "Mon-Sat 10:00 AM - 4:00 PM" — display only; booking time slots
+   * are derived from this, not separately stored. */
+  opdTimings: string;
+  bio: string;
+  photoSeed: string;
+  hospitalId: string;
+}
+
+export interface AppointmentBooking {
+  id: string;
+  doctorId: string;
+  doctorName: string;
+  hospitalName: string;
+  patientName: string;
+  patientAge: number;
+  patientGender: string;
+  patientPhone: string;
+  patientEmail?: string;
+  reason: string;
+  preferredDate: string;
+  preferredTime: string;
+  appointmentRef: string;
+  createdAt: string;
 }
 
 export interface TripSummary {

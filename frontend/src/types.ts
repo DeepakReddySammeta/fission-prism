@@ -26,7 +26,7 @@ export interface ComponentDef {
 }
 
 export type CatalogComponent =
-  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge'
+  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge' | 'Bar' | 'Pie'
   | 'Row' | 'Column' | 'List' | 'Card' | 'Tabs'
   | 'Button' | 'TextField' | 'CheckBox' | 'Slider' | 'ChoicePicker';
 
@@ -69,7 +69,7 @@ export interface ActionPayload {
 
 /** The allowlist. Backend validates against this; frontend enforces it again. */
 export const CATALOG_COMPONENTS: CatalogComponent[] = [
-  'Text', 'Image', 'Icon', 'Divider', 'Badge',
+  'Text', 'Image', 'Icon', 'Divider', 'Badge', 'Bar', 'Pie',
   'Row', 'Column', 'List', 'Card', 'Tabs',
   'Button', 'TextField', 'CheckBox', 'Slider', 'ChoicePicker',
 ];
@@ -81,14 +81,17 @@ export const CATALOG_FUNCTIONS = [
 
 /* ---------------- Domain types (trip planning) ---------------- */
 
-export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations';
+export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations' | 'find_doctor';
 
 export interface ParsedIntent {
   intent: IntentKind;
   origin?: string;
+  /** For "find_doctor", this is unused (destination is a travel concept) —
+   * always "" for that intent. Kept required rather than optional so every
+   * other intent path (which does rely on it) can't accidentally forget it. */
   destination: string;
   durationNights?: number;
-  agents: Array<'flights' | 'hotels'>;
+  agents: Array<'flights' | 'hotels' | 'health'>;
   /** free-text constraint carried over from a refinement message, e.g. "cheaper", "5-star only" */
   refinement?: string;
   /** best-effort ISO dates (YYYY-MM-DD) extracted from the query, if present */
@@ -124,6 +127,11 @@ export interface ParsedIntent {
   /** a short, friendly one-liner introducing the results — always present,
    * LLM-generated when available, templated otherwise. */
   summary: string;
+
+  /* ---- "find_doctor" only ---- */
+  symptom?: string;
+  specialty?: string;
+  ageGroup?: 'child' | 'adult' | 'senior';
 }
 
 export interface FlightOption {
@@ -183,6 +191,52 @@ export interface DestinationSuggestion {
 export interface PlanRequest {
   query: string;
   sessionId?: string;
+}
+
+/* ---------------- Find a doctor ---------------- */
+
+export interface HospitalOption {
+  id: string;
+  name: string;
+  area: string;
+  address: string;
+  phone: string;
+  accreditation: string[];
+  highlights: string[];
+}
+
+export interface DoctorOption {
+  id: string;
+  name: string;
+  gender: 'male' | 'female';
+  qualifications: string;
+  specialty: string;
+  expertise: string[];
+  yearsExperience: number;
+  languages: string[];
+  rating: number;
+  consultationFee: number;
+  opdTimings: string;
+  bio: string;
+  photoSeed: string;
+  hospitalId: string;
+}
+
+export interface AppointmentBooking {
+  id: string;
+  doctorId: string;
+  doctorName: string;
+  hospitalName: string;
+  patientName: string;
+  patientAge: number;
+  patientGender: string;
+  patientPhone: string;
+  patientEmail?: string;
+  reason: string;
+  preferredDate: string;
+  preferredTime: string;
+  appointmentRef: string;
+  createdAt: string;
 }
 
 export interface TripSummary {

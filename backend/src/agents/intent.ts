@@ -1,18 +1,22 @@
 import type { ParsedIntent } from '../types';
 import { generateJSON } from '../llm/groq';
 import { LLM_ENABLED } from '../config';
+import { SPECIALTIES } from '../mock/doctors';
 
-const SYSTEM_PROMPT = `You extract structured trip-planning intent from a user's message, for
-an India-focused domestic trip planner. You never talk to the user directly — your entire
-output is the JSON object described below, consumed by code.
+const SYSTEM_PROMPT = `You extract structured intent from a user's message, for an app that
+does two unrelated things: India-focused domestic trip planning, and finding a doctor by
+symptom. You never talk to the user directly — your entire output is the JSON object
+described below, consumed by code.
 
-Return JSON matching: { "intent": "plan_trip"|"browse_hotels"|"browse_flights"|"refine",
+Return JSON matching: { "intent": "plan_trip"|"browse_hotels"|"browse_flights"|"refine"|"find_doctor",
 "origin"?: string, "destination": string, "durationNights"?: number,
-"agents": ("flights"|"hotels")[], "checkIn"?: string, "checkOut"?: string,
+"agents": ("flights"|"hotels"|"health")[], "checkIn"?: string, "checkOut"?: string,
 "flightTargetTime"?: string, "flightQuery"?: string, "hotelQuery"?: string,
-"adults"?: number, "children"?: number, "summary": string }.
+"adults"?: number, "children"?: number, "symptom"?: string, "specialty"?: string,
+"ageGroup"?: "child"|"adult"|"senior", "summary": string }.
 Return exactly these fields — no extra top-level keys, and never invent specific flights,
-hotels, or prices; those come from other agents that haven't run yet when you're called.
+hotels, prices, or doctor names; those come from other agents that haven't run yet when
+you're called.
 
 What you CAN do:
 - Classify intent: "plan_trip" when the user names both an origin AND a destination (e.g.
@@ -38,8 +42,32 @@ What you CAN do:
   the destination and any origin/dates you understood, setting up the options about to be
   shown. Example: "Planning a 3-night escape to Goa from Hyderabad — here are the best
   flights and stays I found."
+- Classify "find_doctor" when the message describes a health symptom/complaint ("migraine for
+  2 days", "chest pain", "my stomach hurts", "toothache") or directly asks for a kind of
+  doctor/specialist ("I need a cardiologist", "find me a dentist") — agents:["health"],
+  destination:"" (this intent has no travel component). Set "symptom" to the complaint
+  verbatim (or the named specialty if that's all they gave). Set "specialty" to your best
+  inferred category, choosing the closest match from exactly this list: ${SPECIALTIES.join(', ')}
+  — always pick one from this list even if imperfect; never invent a specialty not on it.
+  Set "ageGroup" only when the message clearly implies one ("my son", "my 6-year-old",
+  "my elderly father", "I'm 72") — a specific named symptom (chest pain, migraine, toothache)
+  should drive "specialty" on its own; ageGroup there only narrows further. For a vague
+  complaint with no specific system named ("my child isn't feeling well", "checkup for my
+  father"), ageGroup becomes the primary signal instead — still pick your best "specialty"
+  guess (e.g. "General Medicine" is fine here), the matching code applies ageGroup on top.
+  Write "summary" as one short, warm sentence acknowledging the complaint and specialty
+  found, e.g. "Migraines can be tough — here are neurologists who can help." — see the
+  medical-content rules below for what this summary must never do.
 
 What you CANNOT / MUST NOT do:
+- Never diagnose, never suggest a cause, never recommend medication, a home remedy, or any
+  treatment, and never comment on how serious or minor a symptom sounds — your only medical
+  judgment call is which specialty category fits, nothing else. This applies everywhere,
+  especially "summary": acknowledge the complaint warmly without evaluating it medically.
+- Do not classify "find_doctor" for a message that only mentions a body part or health topic
+  in passing without describing an actual complaint or request (e.g. a travel query that
+  happens to mention "I have a heart condition so avoid high-altitude places" is still
+  "plan_trip" — the message as a whole is asking to plan a trip, not find a doctor).
 - Do not guess a destination that was never named or implied. If the message names no place
   at all, or only describes one vaguely ("somewhere warm", "a beach town", "anywhere nice"),
   set intent:"refine", destination:"" (empty string), agents:[], and write a summary that
@@ -94,7 +122,12 @@ const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 /** Templated fallback so every response — LLM-generated or not — always has
  * an intro line, matching the project's existing "LLM enhances, heuristics
  * guarantee function" pattern. */
-function buildSummary(intent: Pick<ParsedIntent, 'intent' | 'destination' | 'origin' | 'durationNights'>): string {
+function buildSummary(intent: Pick<ParsedIntent, 'intent' | 'destination' | 'origin' | 'durationNights' | 'specialty'>): string {
+  if (intent.intent === 'find_doctor') {
+    // Deliberately doesn't repeat the symptom back or comment on it — same
+    // "acknowledge, never evaluate" rule the LLM path itself follows.
+    return `Here are ${intent.specialty || 'doctors'} you can consult, along with the hospital they practice at.`;
+  }
   const dest = titleCase(intent.destination);
   if (intent.intent === 'browse_hotels') {
     return `Here are some great stays in ${dest} — take a look at the options below.`;
@@ -287,6 +320,69 @@ export function detectMyRecordsIntent(query: string): MyRecordsIntent | undefine
   return { recordType, filter, reference: reference || undefined };
 }
 
+export type AppointmentsQuery =
+  | { kind: 'list'; filter: 'upcoming' | 'past' | 'today' | 'all'; reference?: string }
+  | { kind: 'unsupported'; action: string };
+
+const APPOINTMENT_NOUNS = ['appointment', 'appointments', 'consultation', 'consultations'];
+const TODAY_WORDS = ['today', 'todays'];
+const BOOKING_VERBS = ['book', 'booking', 'schedule'];
+const APPOINTMENT_ACTION_WORDS = ['cancel', 'reschedule', 'postpone', 'delete', 'remove', 'modify', 'change', 'edit'];
+
+/** Chat-box "show my upcoming appointments" / "do I have anything today" /
+ * "past appointments with Dr. Rao" — the health-agent equivalent of
+ * detectMyRecordsIntent above, checked the same way (before parseIntent, no
+ * LLM call) since this is a direct lookup against the appointments table,
+ * not a doctor search. Checked *before* detectDoctorLookup in server.ts —
+ * "my appointment with Dr. Rao" would otherwise match that function's own
+ * "mentions a doctor" heuristic and get misread as a request to view Dr.
+ * Rao's profile instead of the actual booked appointment.
+ *
+ * A request to cancel/reschedule is recognized but reported as
+ * unsupported — this app has no cancellation/rescheduling flow, and
+ * silently showing the list instead would look like the request was
+ * ignored rather than declined. */
+export function detectAppointmentsQuery(query: string): AppointmentsQuery | undefined {
+  const words: string[] = query.toLowerCase().match(/[a-z]+/g) || [];
+  const hasAppointmentNoun = words.some((w) => fuzzyIncludes(w, APPOINTMENT_NOUNS));
+  if (!hasAppointmentNoun) return undefined;
+
+  const actionWord = APPOINTMENT_ACTION_WORDS.find((a) => words.some((w) => fuzzyIncludes(w, [a])));
+  if (actionWord) return { kind: 'unsupported', action: actionWord };
+
+  const hasMy = words.includes('my');
+  const hasUpcoming = words.some((w) => fuzzyIncludes(w, UPCOMING_WORDS));
+  const hasPast = words.some((w) => fuzzyIncludes(w, PAST_WORDS));
+  const hasToday = words.some((w) => fuzzyIncludes(w, TODAY_WORDS));
+
+  // "Book my appointment with Dr. Rao" mentions "my" and "appointment" but
+  // is a booking request, not a request to list existing ones — defer to
+  // detectDoctorLookup/find_doctor unless an explicit time filter makes the
+  // "list" reading unambiguous anyway.
+  const hasBookingVerb = words.some((w) => fuzzyIncludes(w, BOOKING_VERBS));
+  if (hasBookingVerb && !hasUpcoming && !hasPast && !hasToday) return undefined;
+
+  if (!(hasMy || hasUpcoming || hasPast || hasToday)) return undefined;
+
+  const filter: 'upcoming' | 'past' | 'today' | 'all' =
+    hasToday ? 'today' : hasUpcoming ? 'upcoming' : hasPast ? 'past' : 'all';
+
+  // Same leftover-words approach as detectMyRecordsIntent's `reference` —
+  // "my appointment with dr rao" -> "rao", matched later against the
+  // user's own appointments by doctor name.
+  const FILLER = ['show', 'give', 'tell', 'list', 'see', 'view', 'get', 'display', 'what', 'whats', 'when',
+    'details', 'detail', 'of', 'about', 'on', 'me', 'my', 'the', 'please', 'can', 'you', 'could', 'do',
+    'i', 'have', 'any', 'is', 'are', 'for', 'a', 'an', 'and', 'with', 'dr', 'doctor', 'to'];
+  const reference = words
+    .filter((w) => !FILLER.includes(w) && !fuzzyIncludes(w, APPOINTMENT_NOUNS)
+      && !(hasUpcoming && fuzzyIncludes(w, UPCOMING_WORDS)) && !(hasPast && fuzzyIncludes(w, PAST_WORDS))
+      && !(hasToday && fuzzyIncludes(w, TODAY_WORDS)))
+    .join(' ')
+    .trim();
+
+  return { kind: 'list', filter, reference: reference || undefined };
+}
+
 const SEASON_WORDS = ['monsoon', 'winter', 'summer', 'spring', 'autumn'];
 
 /** Best-effort season/month extraction — "in monsoon", "in November" —
@@ -371,8 +467,52 @@ function extractHotelNameQuery(q: string): string | undefined {
 }
 
 /** Very small heuristic fallback so intent parsing works even with no LLM key. */
+// Symptom/body-part keywords -> specialty, for when there's no LLM to make
+// the judgment call. Deliberately narrower and cruder than what the LLM
+// prompt can do (no "acknowledge without evaluating" nuance needed here,
+// since this path never writes any summary text about the symptom itself)
+// — it only has to get the common cases right, the same "heuristic
+// guarantees, LLM enhances" bar every other fallback in this file meets.
+const SYMPTOM_KEYWORDS: Array<[RegExp, string]> = [
+  [/chest pain|heart|palpitat/, 'Cardiology'],
+  [/migraine|headache|dizz|seizure/, 'Neurology'],
+  [/stomach|abdomen|acid reflux|indigestion|diarrh/, 'Gastroenterology'],
+  [/tooth|teeth|dental|gum/, 'Dentistry'],
+  [/back pain|knee|joint|fracture|bone/, 'Orthopedics'],
+  [/skin|rash|acne/, 'Dermatology'],
+  [/ear ache|earache|sinus|sore throat|tonsil/, 'ENT'],
+  [/eye|vision|cataract/, 'Ophthalmology'],
+  [/pregnan|period|menstrual/, 'Gynecology'],
+  [/anxi|stress|depress|can'?t sleep|insomnia/, 'Psychiatry'],
+  [/fever|cold|cough|flu|check ?up/, 'General Medicine'],
+];
+const DOCTOR_REQUEST_WORDS = /\bdoctor\b|\bspecialist\b|\bphysician\b|\bdentist\b|\bappointment\b|\bclinic\b/;
+
+/** Fires before the trip-planning destination logic below so a symptom
+ * ("I have chest pain") never gets misread as "please name a city." */
+function detectHealthHeuristic(q: string): ParsedIntent | undefined {
+  const symptomMatch = SYMPTOM_KEYWORDS.find(([re]) => re.test(q));
+  if (!symptomMatch && !DOCTOR_REQUEST_WORDS.test(q)) return undefined;
+
+  const specialty = symptomMatch?.[1] || 'General Medicine';
+  const ageGroup: ParsedIntent['ageGroup'] = /\bmy (son|daughter|kid|child|baby)\b|\d\s*-?\s*year-?old (son|daughter|kid|child)/.test(q)
+    ? 'child'
+    : /\bmy (father|mother|grandfather|grandmother|dad|mom)\b|\belderly\b/.test(q)
+      ? 'senior'
+      : undefined;
+
+  return {
+    intent: 'find_doctor', destination: '', agents: ['health'],
+    symptom: q.trim(), specialty, ageGroup,
+    summary: buildSummary({ intent: 'find_doctor', destination: '', specialty }),
+  };
+}
+
 function heuristicIntent(query: string): ParsedIntent {
   const q = query.toLowerCase();
+  const health = detectHealthHeuristic(q);
+  if (health) return health;
+
   const nightsMatch = q.match(/(\d+)\s*(night|day)/);
   const durationNights = nightsMatch ? Number(nightsMatch[1]) - (nightsMatch[2] === 'day' ? 1 : 0) : undefined;
 
@@ -478,7 +618,14 @@ const INTENT_TIMEOUT_MS = 8_000;
 export async function parseIntent(query: string): Promise<ParsedIntent> {
   if (LLM_ENABLED) {
     const result = await generateJSON<ParsedIntent>(SYSTEM_PROMPT, query, INTENT_TIMEOUT_MS);
-    if (result?.destination && result.agents?.length) {
+    // find_doctor deliberately has no destination (it's not a travel
+    // concept) — the usual "destination must be non-empty" check would
+    // otherwise reject every valid find_doctor result and silently fall
+    // through to heuristics that know nothing about symptoms.
+    const isUsable = result?.intent === 'find_doctor'
+      ? !!result.agents?.length
+      : !!(result?.destination && result.agents?.length);
+    if (isUsable && result) {
       const normalized = ensureFlightsWhenOriginKnown(result);
       // The regex extractors below run either way, whether or not the LLM
       // is enabled — filling in anything the model's JSON left out is cheap

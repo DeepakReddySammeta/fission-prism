@@ -284,6 +284,26 @@ body {
 .a2-mono { font-family: var(--mono); font-size: 14px; font-weight: 600; color: var(--heading); }
 
 .a2-divider { height: 1px; background: var(--rule); margin: 4px 0; }
+
+/* Bar — a generic progress/spend bar (first data-viz primitive in the
+ * catalog; everything before this reused Text/Badge/Image). */
+.a2-bar { display: flex; flex-direction: column; gap: 4px; width: 100%; }
+.a2-bar-label { font-size: 11.5px; color: var(--muted); }
+.a2-bar-track { height: 8px; border-radius: 999px; background: var(--paper-dim); overflow: hidden; }
+.a2-bar-fill { height: 100%; border-radius: 999px; transition: width var(--dur, 0.4s) var(--ease, ease); }
+.a2-bar-brand { background: var(--brass); }
+.a2-bar-success { background: var(--success, #16a34a); }
+.a2-bar-warning { background: var(--warning, #d97706); }
+.a2-bar-danger { background: var(--destructive, #dc2626); }
+
+/* Pie — category-breakdown donut for the finance portfolio/goals-analysis
+ * cards, built from a CSS conic-gradient (see catalog.tsx's Pie case). */
+.a2-pie-wrap { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+.a2-pie { position: relative; width: 132px; height: 132px; border-radius: 50%; flex: none; }
+.a2-pie-hole { position: absolute; inset: 24px; border-radius: 50%; background: var(--card); }
+.a2-pie-legend { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--ink); min-width: 0; }
+.a2-pie-legend-item { display: flex; align-items: center; gap: 8px; }
+.a2-pie-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .a2-icon { color: var(--brass); }
 .a2-monogram {
   width: 42px; height: 42px; border-radius: 50%; flex: none;
@@ -702,4 +722,61 @@ body {
 
 .dark .weather-card { background: var(--card); border-color: var(--rule); }
 .dark .weather-card-temp { color: var(--brass-light); }
+
+/* ---------------- Find a Doctor: card grid ----------------
+ * Doctor cards render as a Column (photo on top, per envelopes.ts's own
+ * comment: a vertical card reads far better at half-width than a wide row
+ * would) — this overrides just this surface's own List from the generic
+ * full-width vertical stack every other surface uses into a 2-up grid,
+ * scoped to .surface-health specifically so flights/hotels/destinations
+ * keep their normal layout untouched. */
+.surface-health .a2-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+.surface-health .a2-list > * + * { border-top: none; padding-top: 0; margin-top: 0; }
+.surface-health .a2-list > .a2-column {
+  border: 1px solid var(--rule); border-radius: var(--radius-lg); padding: 16px;
+  background: var(--card); box-shadow: var(--shadow-sm);
+}
+.surface-health .a2-list .a2-img-wrap { width: 100%; height: 210px; }
+/* object-position: top — headshots are framed with the face near the top,
+   and a wide-short card crop (much shorter than the square source photo)
+   was centering the crop and cutting heads off; anchoring to the top keeps
+   the face in frame and crops from the chest down instead. */
+.surface-health .a2-list .a2-img { object-position: top center; }
+@media (max-width: 640px) {
+  .surface-health .a2-list { grid-template-columns: 1fr; }
+}
+
+/* The profile/booking/confirmation cards don't need the full width the
+ * grid card gets for its 2-up layout — at that width they either left-align
+ * with a big empty gutter (profile, booking form) or just look sparse
+ * (confirmation). :has(.a2-list) singles out just the list card so it
+ * keeps its full width. NOTE: this targets .surface-health itself (the
+ * actual bordered/shadowed Card element from Surface()), not the plain
+ * .a2-card div nested inside it — capping the inner div's width doesn't
+ * shrink the visible card around it. */
+.surface-health:not(:has(.a2-list)) { max-width: 760px; }
+
+/* The profile card's photo sits beside its info column (see envelopes.ts's
+ * doctorProfileSurface) — a fixed square avatar reads better there than
+ * the thumbnail-sized landscape crop the default .a2-img-wrap gives every
+ * other inline image, and a square source photo needs no cropping at all
+ * at a matching square size. */
+.surface-health [data-cid="hero_img"].a2-img-wrap,
+.surface-health [data-cid="hero_img"].a2-img-fallback { width: 160px; height: 160px; flex: none; }
+
+/* The confirmation card is just a 4-line receipt — narrower than the
+ * general 760px non-grid width above (same specificity, so this must come
+ * after it in the file to win). */
+.surface-health:has([data-cid="confirm_body"]) { max-width: 440px; }
+
+/* ---------------- Finance agent ----------------
+ * A compact ledger-style card, never the full chat-bubble width — every
+ * finance card (budget breakdown, expense confirmation, goal tracker,
+ * summary) is a narrow column of labels/bars, so capping the width here
+ * (rather than leaving it to stretch) avoids the same large-empty-gutter
+ * mistake the doctor cards originally had. Buttons are wrapped in their
+ * own Row at the source (envelopes.ts) rather than patched here, so
+ * there's no full-width-button issue to guard against either. */
+.surface-finance { max-width: 620px; }
+.surface-finance .a2-bar-track { height: 10px; }
 

@@ -11,6 +11,21 @@ export function addDays(iso: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+const WEEKDAYS_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTHS_LONG = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+// Mirrors formatAppointmentDate in backend/src/orchestrator/envelopes.ts —
+// "2026-08-28" -> "Fri 28 August", built manually (not toLocaleDateString)
+// so the wording doesn't drift with the viewer's browser locale.
+export function formatAppointmentDate(iso: string): string {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return `${WEEKDAYS_SHORT[d.getDay()]} ${d.getDate()} ${MONTHS_LONG[d.getMonth()]}`;
+}
+
 // Mirrors CABIN_CLASSES/CABIN_PRICE_MULTIPLIER/CABIN_BAGGAGE_KG in
 // backend/src/orchestrator/envelopes.ts — the listed fare is the Economy
 // price, and a higher cabin multiplies it rather than needing its own
