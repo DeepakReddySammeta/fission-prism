@@ -1,7 +1,7 @@
 import { A2UIStore } from '../a2ui/store';
 import type { ComponentDef } from '../types';
 
-const KEY = 'voyage-ai-conversations';
+const KEY = 'fission-exp-conversations';
 const MAX_CONVERSATIONS = 30;
 
 interface SerializedSurface {

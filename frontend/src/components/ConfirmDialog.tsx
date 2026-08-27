@@ -17,7 +17,7 @@ interface ConfirmDialogProps {
 
 /** A single reusable confirm/cancel modal, styled on the app's own Dialog +
  * Button primitives instead of the browser's native confirm() — so it looks
- * like the rest of Voyage AI (themed, animated, matches light/dark) rather
+ * like the rest of the app (themed, animated, matches light/dark) rather
  * than a jarring OS-level popup. Used wherever an action needs a
  * confirmation step before it runs (deleting a plan today; any future
  * destructive or one-way action can reuse it as-is). */

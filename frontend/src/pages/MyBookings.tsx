@@ -39,25 +39,58 @@ function BookingCard({ booking, onOpen }: { booking: BookingRecord; onOpen: (id:
   const dateRange = trip.checkIn && trip.checkOut ? `${trip.checkIn} → ${trip.checkOut}` : null;
 
   return (
-    <div className="section-card plan-detail-card reveal">
-      {booking.imageUrl && <div className="plan-detail-img" style={{ backgroundImage: `url(${booking.imageUrl})` }} />}
-      <div className="a2-row" style={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <h2 className="a2-h2">{booking.title}</h2>
-        <button className="link-btn" onClick={() => onOpen(booking.id)}>View full plan →</button>
+    <div className="booking-card-v2 reveal" onClick={() => onOpen(booking.id)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(booking.id); }}>
+      {/* Image */}
+      <div className="bc-image-wrap">
+        {booking.imageUrl ? (
+          <div className="bc-image" style={{ backgroundImage: `url(${booking.imageUrl})` }} />
+        ) : (
+          <div className="bc-image-fallback">
+            <span>🧳</span>
+          </div>
+        )}
+        {trip.bookingRef && (
+          <div className="bc-status">
+            <span className="bc-status-dot" />
+            <span>Booked</span>
+          </div>
+        )}
       </div>
-      <p className="a2-caption">Booked {new Date(booking.createdAt).toLocaleDateString()}</p>
 
-      {(trip.flight || trip.hotel) && (
-        <p className="a2-body booking-summary-line">
-          {trip.flight && <span>✈ {trip.flight.airline}</span>}
-          {trip.hotel && <span>🏨 {trip.hotel.name}</span>}
-        </p>
-      )}
-      {dateRange && <p className="a2-caption">{dateRange}</p>}
+      {/* Body */}
+      <div className="bc-body">
+        <div className="bc-title-row">
+          <h3 className="bc-title">{booking.title}</h3>
+          <span className="bc-arrow" aria-hidden>→</span>
+        </div>
 
-      <div className="a2-row" style={{ justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-        {trip.totalPrice ? <p className="a2-h3" style={{ margin: 0 }}>₹{trip.totalPrice}</p> : <span />}
-        {trip.bookingRef && <Badge variant="success">Booked</Badge>}
+        <p className="bc-meta">Booked {new Date(booking.createdAt).toLocaleDateString()}</p>
+
+        <div className="bc-tags">
+          {trip.flight && (
+            <span className="bc-tag">
+              <span className="bc-tag-icon" aria-hidden>✈️</span>
+              <span>{trip.flight.airline}</span>
+            </span>
+          )}
+          {trip.hotel && (
+            <span className="bc-tag">
+              <span className="bc-tag-icon" aria-hidden>🏨</span>
+              <span>{trip.hotel.name}</span>
+            </span>
+          )}
+        </div>
+
+        {dateRange && <p className="bc-dates">{dateRange}</p>}
+
+        <div className="bc-footer">
+          {trip.totalPrice ? (
+            <span className="bc-price">₹{trip.totalPrice.toLocaleString()}</span>
+          ) : (
+            <span />
+          )}
+          <span className="bc-action">View details</span>
+        </div>
       </div>
     </div>
   );
@@ -108,10 +141,18 @@ export default function MyBookings() {
 
   if (!user) {
     return (
-      <div className="plans-page">
-        <h1 className="a2-h1">My Bookings</h1>
-        <div className="empty-state">
-          <p>Sign in to see your confirmed bookings.</p>
+      <div className="plans-page bookings-page-bg">
+        <div className="bookings-header">
+          <div className="bookings-header-icon" aria-hidden>🎫</div>
+          <div className="bookings-header-text">
+            <h1 className="a2-h1">My Bookings</h1>
+            <div className="bookings-header-line" />
+          </div>
+        </div>
+        <div className="empty-state-box">
+          <div className="empty-icon" aria-hidden>🔐</div>
+          <h3>Sign in to continue</h3>
+          <p>Sign in to see your confirmed bookings and manage your trips.</p>
           <Button onClick={() => setAuthOpen(true)}>Sign in</Button>
         </div>
         <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
@@ -121,19 +162,36 @@ export default function MyBookings() {
 
   if (bookings === null) {
     return (
-      <div className="plans-page">
-        <h1 className="a2-h1">My Bookings</h1>
-        <p className="muted">Loading…</p>
+      <div className="plans-page bookings-page-bg">
+        <div className="bookings-header">
+          <div className="bookings-header-icon" aria-hidden>🎫</div>
+          <div className="bookings-header-text">
+            <h1 className="a2-h1">My Bookings</h1>
+            <div className="bookings-header-line" />
+          </div>
+        </div>
+        <div className="empty-state-box">
+          <div className="empty-icon" aria-hidden>⏳</div>
+          <h3>Loading your trips…</h3>
+        </div>
       </div>
     );
   }
 
   if (bookings.length === 0) {
     return (
-      <div className="plans-page">
-        <h1 className="a2-h1">My Bookings</h1>
-        <div className="empty-state">
-          <p>No confirmed bookings yet — confirm a flight or a room, then save the trip to see it here.</p>
+      <div className="plans-page bookings-page-bg">
+        <div className="bookings-header">
+          <div className="bookings-header-icon" aria-hidden>🎫</div>
+          <div className="bookings-header-text">
+            <h1 className="a2-h1">My Bookings</h1>
+            <div className="bookings-header-line" />
+          </div>
+        </div>
+        <div className="empty-state-box">
+          <div className="empty-icon" aria-hidden>✈️</div>
+          <h3>No bookings yet</h3>
+          <p>Confirm a flight or a room, then save the trip to see it here.</p>
         </div>
       </div>
     );
@@ -157,15 +215,27 @@ export default function MyBookings() {
   ];
 
   return (
-    <div className="plans-page">
-      <h1 className="a2-h1">My Bookings</h1>
+    <div className="plans-page bookings-page-bg">
+      <div className="bookings-header">
+        <div className="bookings-header-icon" aria-hidden>🎫</div>
+        <div className="bookings-header-text">
+          <h1 className="a2-h1">My Bookings</h1>
+          <div className="bookings-header-line" />
+        </div>
+      </div>
+
       <Tabs defaultValue="trips">
-        <div className="bookings-toolbar">
-          <TabsList>
-            {categories.map((c) => (
-              <TabsTrigger key={c.value} value={c.value}>{c.label} ({c.items.length})</TabsTrigger>
-            ))}
-          </TabsList>
+        <div className="bookings-toolbar-wrap">
+          <div className="bookings-tabs">
+            <TabsList>
+              {categories.map((c) => (
+                <TabsTrigger key={c.value} value={c.value}>
+                  {c.label}
+                  <span className="tab-count">{c.items.length}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
           <Select
             value={dateFilter}
             onValueChange={(v) => setSearchParams((prev) => {
@@ -174,23 +244,34 @@ export default function MyBookings() {
               return next;
             })}
           >
-            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-            <SelectContent>
+            <SelectTrigger className="bookings-select-trigger w-[150px]"><SelectValue /></SelectTrigger>
+            <SelectContent className="bookings-select-content">
               <SelectItem value="all">All</SelectItem>
               <SelectItem value="upcoming">Upcoming</SelectItem>
               <SelectItem value="past">Past</SelectItem>
             </SelectContent>
           </Select>
         </div>
+
         {categories.map((c) => (
           <TabsContent key={c.value} value={c.value}>
-            {c.items.length === 0 ? (
-              <p className="muted">{c.empty}</p>
-            ) : (
-              <div className="bookings-grid">
-                {c.items.map((b) => <BookingCard key={b.id} booking={b} onOpen={setOpenPlanId} />)}
-              </div>
-            )}
+            <div className="bookings-content" key={`${c.value}-${dateFilter}`}>
+              {c.items.length === 0 ? (
+                <div className="empty-state-box">
+                  <div className="empty-icon" aria-hidden>📭</div>
+                  <h3>{c.label}</h3>
+                  <p>{c.empty}</p>
+                </div>
+              ) : (
+                <div className="bookings-grid stagger-reveal">
+                  {c.items.map((b, i) => (
+                    <div key={b.id} style={{ animationDelay: `${i * 80}ms` }}>
+                      <BookingCard booking={b} onOpen={setOpenPlanId} />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </TabsContent>
         ))}
       </Tabs>

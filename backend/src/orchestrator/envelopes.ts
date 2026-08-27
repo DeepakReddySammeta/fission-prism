@@ -177,6 +177,7 @@ export function flightsSurface(surfaceId: string, flights: FlightOption[]): Enve
     // takes priority over the cosmetic Cheapest/Fastest badges — it's the
     // one row the traveler actually asked for.
     tag: f.recommended ? 'Recommended' : f.price === minPrice ? 'Cheapest' : f.durationMins === minDuration ? 'Fastest' : '',
+    timeBlock: `${f.departTime} → ${f.arriveTime}`,
     stopsLabel: f.stops === 0 ? 'Direct' : `${f.stops} stop${f.stops > 1 ? 's' : ''}`,
     stopsTone: f.stops === 0 ? 'success' : 'neutral',
   }));
@@ -193,20 +194,18 @@ export function flightsSurface(surfaceId: string, flights: FlightOption[]): Enve
           { id: 'head', component: 'Text', variant: 'h2', text: 'Flights' },
           { id: 'list', component: 'List', children: { path: '/flights', componentId: 'flight_row' } },
 
-          { id: 'flight_row', component: 'Row', align: 'center', gap: 16, children: ['fr_logo', 'fr_info', 'fr_price_col'] },
+          { id: 'flight_row', component: 'Row', align: 'center', gap: 16, children: ['fr_logo', 'fr_body', 'fr_action'] },
           { id: 'fr_logo', component: 'Icon', label: { path: 'code' } },
-          { id: 'fr_info', component: 'Column', weight: 1, gap: 4, children: ['fr_top', 'fr_times'] },
+          { id: 'fr_body', component: 'Column', weight: 1, gap: 6, children: ['fr_top', 'fr_bottom'] },
           { id: 'fr_top', component: 'Row', align: 'center', gap: 8, children: ['fr_airline', 'fr_tag'] },
           { id: 'fr_airline', component: 'Text', variant: 'h3', text: { path: 'airline' } },
           { id: 'fr_tag', component: 'Badge', tone: 'brand', text: { path: 'tag' } },
-          { id: 'fr_times', component: 'Row', align: 'center', gap: 8, children: ['fr_depart', 'fr_arrow', 'fr_arrive', 'fr_duration', 'fr_stops'] },
-          { id: 'fr_depart', component: 'Text', variant: 'mono', text: { path: 'departTime' } },
-          { id: 'fr_arrow', component: 'Text', variant: 'mono', text: '→' },
-          { id: 'fr_arrive', component: 'Text', variant: 'mono', text: { path: 'arriveTime' } },
+          { id: 'fr_bottom', component: 'Row', align: 'center', gap: 10, children: ['fr_times', 'fr_duration', 'fr_stops'] },
+          { id: 'fr_times', component: 'Text', variant: 'mono', text: { path: 'timeBlock' } },
           { id: 'fr_duration', component: 'Text', variant: 'caption', text: { call: 'formatDuration', args: { value: { path: 'durationMins' } } } },
           { id: 'fr_stops', component: 'Badge', tone: { path: 'stopsTone' }, text: { path: 'stopsLabel' } },
 
-          { id: 'fr_price_col', component: 'Column', align: 'end', gap: 8, children: ['fr_price', 'fr_btn'] },
+          { id: 'fr_action', component: 'Column', align: 'end', gap: 4, children: ['fr_price', 'fr_btn'] },
           { id: 'fr_price', component: 'Text', variant: 'h3', text: { call: 'formatCurrency', args: { value: { path: 'price' }, currency: 'INR' } } },
           { id: 'fr_btn_label', component: 'Text', text: 'Select' },
           {
@@ -321,7 +320,7 @@ export function hotelsSurface(surfaceId: string, hotels: HotelOption[]): Envelop
     };
   });
   return [
-    createSurface(surfaceId, 'Stay Finder', '#3b82f6'),
+    createSurface(surfaceId, 'Stay Finder', '#f25011'),
     {
       version: A2UI_VERSION,
       updateComponents: {
@@ -332,20 +331,21 @@ export function hotelsSurface(surfaceId: string, hotels: HotelOption[]): Envelop
           { id: 'head', component: 'Text', variant: 'h2', text: 'Hotels' },
           { id: 'list', component: 'List', children: { path: '/hotels', componentId: 'hotel_row' } },
 
-          { id: 'hotel_row', component: 'Row', gap: 16, align: 'stretch', children: ['hr_img', 'hr_body'] },
+          { id: 'hotel_row', component: 'Row', gap: 14, align: 'stretch', children: ['hr_img', 'hr_body'] },
           { id: 'hr_img', component: 'Image', url: { path: 'imageUrl' } },
-          { id: 'hr_body', component: 'Column', weight: 1, gap: 6, children: ['hr_top', 'hr_area', 'hr_meta', 'hr_bottom'] },
-          { id: 'hr_top', component: 'Row', align: 'center', gap: 8, children: ['hr_name', 'hr_rating'] },
+          { id: 'hr_body', component: 'Column', weight: 1, gap: 4, children: ['hr_top', 'hr_mid', 'hr_bottom'] },
+          { id: 'hr_top', component: 'Row', align: 'start', justify: 'between', children: ['hr_name_col', 'hr_price_col'] },
+          { id: 'hr_name_col', component: 'Column', weight: 1, gap: 2, children: ['hr_name', 'hr_rating_text'] },
           { id: 'hr_name', component: 'Text', variant: 'h3', text: { path: 'name' } },
-          { id: 'hr_rating', component: 'Badge', tone: 'success', text: { path: 'ratingLabel' } },
-          { id: 'hr_area', component: 'Text', variant: 'caption', text: { path: 'area' } },
-          { id: 'hr_meta', component: 'Row', gap: 6, children: ['hr_type', 'hr_free_cancel'] },
-          { id: 'hr_type', component: 'Badge', tone: 'neutral', text: { path: 'propertyType' } },
-          { id: 'hr_free_cancel', component: 'Badge', tone: 'success', text: 'Free cancellation' },
-          { id: 'hr_bottom', component: 'Row', justify: 'between', align: 'center', children: ['hr_price_col', 'hr_btn'] },
-          { id: 'hr_price_col', component: 'Column', gap: 0, children: ['hr_price', 'hr_pernight'] },
+          { id: 'hr_rating_text', component: 'Text', variant: 'caption', text: { path: 'ratingLabel' } },
+          { id: 'hr_price_col', component: 'Column', align: 'end', gap: 0, children: ['hr_price', 'hr_pernight'] },
           { id: 'hr_price', component: 'Text', variant: 'h3', text: { call: 'formatCurrency', args: { value: { path: 'price' }, currency: 'INR' } } },
           { id: 'hr_pernight', component: 'Text', variant: 'caption', text: '/ night' },
+          { id: 'hr_mid', component: 'Text', variant: 'caption', text: { path: 'area' } },
+          { id: 'hr_bottom', component: 'Row', align: 'center', justify: 'between', children: ['hr_tags', 'hr_btn'] },
+          { id: 'hr_tags', component: 'Row', gap: 6, children: ['hr_type', 'hr_free_cancel'] },
+          { id: 'hr_type', component: 'Badge', tone: 'neutral', text: { path: 'propertyType' } },
+          { id: 'hr_free_cancel', component: 'Badge', tone: 'success', text: 'Free cancellation' },
           { id: 'hr_btn_label', component: 'Text', text: 'View rooms' },
           {
             id: 'hr_btn', component: 'Button', variant: 'primary', child: 'hr_btn_label',
@@ -421,7 +421,7 @@ export function roomsSurface(surfaceId: string, hotel: HotelOption, booking?: Ro
   const highlightIds = highlights.map((_, i) => `hl_${i}`);
 
   return [
-    createSurface(surfaceId, 'Stay Finder', '#3b82f6'),
+    createSurface(surfaceId, 'Stay Finder', '#f25011'),
     {
       version: A2UI_VERSION,
       updateComponents: {

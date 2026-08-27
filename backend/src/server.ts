@@ -1610,6 +1610,11 @@ app.get<{ Querystring: { filter?: 'upcoming' | 'past' | 'all' } }>('/api/plans',
   return withDate;
 });
 
+app.get<{ Querystring: { filter?: 'upcoming' | 'past' | 'all' } }>('/api/appointments', { preHandler: requireAuth }, async (req) => {
+  const filter = req.query.filter || 'all';
+  return queryUserAppointments(req.user!.id, filter);
+});
+
 app.get<{ Params: { id: string } }>('/api/plans/:id', { preHandler: requireAuth }, async (req, reply) => {
   const row = db.prepare('SELECT * FROM plans WHERE id = ?').get(req.params.id) as PlanRow | undefined;
   if (!row || row.user_id !== req.user!.id) return reply.code(404).send({ error: 'not found' });
