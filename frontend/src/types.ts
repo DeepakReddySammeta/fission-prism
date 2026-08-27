@@ -26,7 +26,7 @@ export interface ComponentDef {
 }
 
 export type CatalogComponent =
-  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge' | 'Bar' | 'Pie'
+  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge' | 'Bar' | 'Pie' | 'BarChart' | 'AreaChart' | 'RadarChart' | 'Gauge'
   | 'Row' | 'Column' | 'List' | 'Card' | 'Tabs'
   | 'Button' | 'TextField' | 'CheckBox' | 'Slider' | 'ChoicePicker';
 
@@ -69,7 +69,7 @@ export interface ActionPayload {
 
 /** The allowlist. Backend validates against this; frontend enforces it again. */
 export const CATALOG_COMPONENTS: CatalogComponent[] = [
-  'Text', 'Image', 'Icon', 'Divider', 'Badge', 'Bar', 'Pie',
+  'Text', 'Image', 'Icon', 'Divider', 'Badge', 'Bar', 'Pie', 'BarChart', 'AreaChart', 'RadarChart', 'Gauge',
   'Row', 'Column', 'List', 'Card', 'Tabs',
   'Button', 'TextField', 'CheckBox', 'Slider', 'ChoicePicker',
 ];

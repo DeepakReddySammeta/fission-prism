@@ -172,6 +172,13 @@ export type FinanceQuery =
    * user should be able to ask "what would it take" before committing to
    * anything, same reasoning as the rest of this file never assuming). */
   | { kind: 'goals_analysis'; goalName?: string; adHocAmount?: number; adHocTargetDate?: string }
+  /** Standalone dashboard widgets, each askable by name instead of asking
+   * for the whole "portfolio" screen — same data the portfolio card
+   * already computes, just rendered alone. */
+  | { kind: 'expenses_breakdown' }
+  | { kind: 'cash_flow' }
+  | { kind: 'budget_utilization' }
+  | { kind: 'recent_expenses' }
   | { kind: 'unsupported'; action: string }
   | { kind: 'unclear' };
 
@@ -209,17 +216,88 @@ const PORTFOLIO_PATTERNS = [
   /\boverview of my finances\b/i,
 ];
 
+// Standalone dashboard-widget requests — checked before SUMMARY_PATTERNS
+// since that broader "show/give me my ... expenses" pattern would
+// otherwise swallow "give me my expenses breakdown" too.
+const EXPENSES_BREAKDOWN_PATTERNS = [
+  /\bexpenses?\s+breakdown\b/i,
+  /\bspending breakdown\b/i,
+  /\bcategory breakdown\b/i,
+  /\bbreakdown of my (?:expenses|spending)\b/i,
+  /\bwhere (?:did|does|is|are) my money (?:go|going)\b/i,
+];
+const CASH_FLOW_PATTERNS = [
+  /\bcash\s*flow\b/i,
+  /\bincome (?:vs\.?|versus|and) expenses?\b/i,
+];
+const BUDGET_UTILIZATION_PATTERNS = [
+  /\bbudget utili[sz]ation\b/i,
+  /\bbudget usage\b/i,
+  /\bhow much of my budget\b/i,
+  /\b(?:%|percent) of (?:my )?budget\b/i,
+  /\bhow much (?:have i|did i) used? of my budget\b/i,
+];
+const RECENT_EXPENSES_PATTERNS = [
+  /\brecent (?:expenses?|transactions?|spending)\b/i,
+  /\bmy transactions\b/i,
+  /\btransaction history\b/i,
+  /\blast few expenses\b/i,
+];
+
 // Deliberately checked before the plain "goal" checks below — "how do I
 // achieve my goal to save 1 lakh" contains the word "goal" but is asking
 // for a feasibility plan, not to create or list one.
 const GOALS_ANALYSIS_PATTERNS = [
   /\bgoals?\s+analysis\b/i,
   /\banalyz(?:e|ing) my goals?\b/i,
-  /\bhow (?:can|do) i (?:achieve|reach|hit|meet|save for)\b/i,
-  /\bhow to (?:achieve|reach|save for|hit|meet)\b/i,
   /\bplan (?:for|to reach) my\b/i,
   /\bam i on track\b/i,
 ];
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp: number[] = new Array(n + 1);
+  for (let j = 0; j <= n; j++) dp[j] = j;
+  for (let i = 1; i <= m; i++) {
+    let prevDiag = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const temp = dp[j];
+      dp[j] = a[i - 1] === b[j - 1] ? prevDiag : 1 + Math.min(prevDiag, dp[j], dp[j - 1]);
+      prevDiag = temp;
+    }
+  }
+  return dp[n];
+}
+
+// "how do i eachieve my car goal" ("eachieve" a plain typo for "achieve")
+// was silently falling through to list_goals, because a rigid keyword
+// alternation doesn't match a misspelling — same class of bug the doctor
+// lookup had to fix earlier for names. Distance tolerance scales with word
+// length so short words (hit/meet) don't fuzzy-match half the dictionary.
+const ACHIEVE_WORDS = ['achieve', 'reach', 'hit', 'meet', 'attain'];
+function hasAchieveVerb(words: string[]): boolean {
+  return words.some((w) => ACHIEVE_WORDS.some((target) => {
+    const maxDist = target.length <= 4 ? 1 : 2;
+    return levenshtein(w, target) <= maxDist;
+  }));
+}
+function isAskingHowToReachGoal(query: string, words: string[]): boolean {
+  const hasHowPrefix = /\bhow\s+(?:can|do)\s+i\b/i.test(query) || /\bhow\s+to\b/i.test(query);
+  if (!hasHowPrefix) return false;
+  if (hasAchieveVerb(words) || /\bsave for\b/i.test(query)) return true;
+  // "plan" on its own isn't a safe achieve-synonym to add to ACHIEVE_WORDS
+  // — "how do I plan a trip to Goa" would then misfire into this finance
+  // check too. Only count "plan" here when the message is unambiguously
+  // about saving/a goal as well ("how can I plan saving 1 lakh for my
+  // bike" — a real request for a savings plan, not a trip).
+  const mentionsPlanVerb = words.some((w) => levenshtein(w, 'plan') <= 1);
+  const mentionsSaveOrGoal = /\bsave\b|\bsaving\b|\bsavings\b|\bgoal\b|\bgoals\b|\bfund\b/i.test(query);
+  return mentionsPlanVerb && mentionsSaveOrGoal;
+}
 
 /** The "on X" phrase that determines the category is usually the whole
  * note too ("spent 4000 on rent" -> note "rent"), which reads as pure
@@ -269,18 +347,33 @@ export function detectFinanceQuery(query: string): FinanceQuery | undefined {
   if (PORTFOLIO_PATTERNS.some((p) => p.test(query))) {
     return { kind: 'portfolio' };
   }
+  if (EXPENSES_BREAKDOWN_PATTERNS.some((p) => p.test(query))) {
+    return { kind: 'expenses_breakdown' };
+  }
+  if (CASH_FLOW_PATTERNS.some((p) => p.test(query))) {
+    return { kind: 'cash_flow' };
+  }
+  if (BUDGET_UTILIZATION_PATTERNS.some((p) => p.test(query))) {
+    return { kind: 'budget_utilization' };
+  }
+  if (RECENT_EXPENSES_PATTERNS.some((p) => p.test(query))) {
+    return { kind: 'recent_expenses' };
+  }
 
-  if (GOALS_ANALYSIS_PATTERNS.some((p) => p.test(query))) {
+  if (GOALS_ANALYSIS_PATTERNS.some((p) => p.test(query)) || isAskingHowToReachGoal(query, words)) {
     // Best-effort name extraction: "my <name> goal/fund" first (more
     // specific), else "<name> goal/fund" anywhere in the message.
     const nameMatch = query.match(/\bmy\s+([a-z][a-z\s]*?)\s+(?:goal|fund)\b/i) || query.match(/\b([a-z][a-z\s]*?)\s+(?:goal|fund)\b/i);
     let goalName = nameMatch?.[1] ? cleanGoalName(nameMatch[1]) : undefined;
-    // A richer "to save X <name> [by <date>]" capture, for the ad-hoc case
-    // where the amount/deadline live in this same message rather than in
-    // an already-saved goal (see cleanGoalName's own comment — the amount
-    // often sits inside the target's own description).
+    // A richer "for/to save X <name> [by <date>]" capture, for the ad-hoc
+    // case where the amount/deadline live in this same message rather
+    // than in an already-saved goal (see cleanGoalName's own comment —
+    // the amount often sits inside the target's own description). Mirrors
+    // set_goal's own name regex (bare "for" included) so "plan saving 1
+    // lakh for my bike" extracts "bike" the same way "save 1 lakh for a
+    // bike" would when actually creating the goal.
     const adHocNameMatch = query.match(
-      /(?:\bto\s+save\b|\bto\s+buy\b|\bto\s+get\b|\bto\s+purchase\b)\s+(?:a\s+|an\s+|my\s+)?([a-z0-9][a-z0-9\s]*?)(?:\s+by\s+(.+?))?[.?!]*$/i
+      /(?:\bfor\b|\bto\s+save\b|\bto\s+buy\b|\bto\s+get\b|\bto\s+purchase\b)\s+(?:a\s+|an\s+|my\s+)?([a-z0-9][a-z0-9\s]*?)(?:\s+by\s+(.+?))?[.?!]*$/i
     );
     if (adHocNameMatch?.[1]) {
       const cleaned = cleanGoalName(adHocNameMatch[1]);

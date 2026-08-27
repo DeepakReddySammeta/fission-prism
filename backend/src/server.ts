@@ -22,6 +22,7 @@ import {
   createSession, getSession, subscribe, unsubscribe, emit, emitAll,
   type PendingMyRecords, type PlanRecordSummary, type PendingAppointments, type AppointmentSummary,
   type PendingFinance, type CategoryStatus, type GoalSummary, type GoalPlanItem,
+  type CashFlowPoint, type RecentExpenseRow,
 } from './orchestrator/sessions';
 import { indexHotels, findHotelByName } from './orchestrator/hotelIndex';
 import {
@@ -29,6 +30,7 @@ import {
   destinationsSurface, doctorsSurface, doctorProfileSurface, doctorBookingFormSurface, appointmentConfirmationSurface,
   appointmentsSurface, budgetBreakdownSurface, expenseLoggedSurface, savingsGoalSurface, savingsGoalsListSurface,
   financeSummarySurface, portfolioSurface, goalsAnalysisSurface,
+  expensesBreakdownSurface, cashFlowSurface, budgetUtilizationSurface, recentExpensesSurface,
   inr, formatAppointmentDate, hotelImage, roomImage, destinationImage, flightImage, flightDetails, hotelDetails, cabinPriceMultiplier,
 } from './orchestrator/envelopes';
 import {
@@ -66,6 +68,19 @@ app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth },
   const { query } = req.body;
   if (!query?.trim()) return reply.code(400).send({ error: 'query is required' });
 
+  // "I earn 60000, rent is 20000..." / "spent 500 on groceries" / "save
+  // 50000 for a laptop" / "how can I plan saving 1 lakh for my bike" / "how
+  // much have I spent this month" — the personal finance agent. Checked
+  // FIRST, ahead of detectMyRecordsIntent below: "plan" is that function's
+  // own trigger noun for a saved travel plan, so a finance sentence that
+  // happens to use the ordinary English verb "plan" ("how can I plan
+  // saving...") was being misread as "show me my saved trip plans" before
+  // finance ever got a chance to look at it. Finance's own vocabulary
+  // (goal/save/budget/income/...) essentially never collides with a real
+  // "show my trips" request, so checking it first costs nothing there.
+  const financeQuery = detectFinanceQuery(query);
+  if (financeQuery) return handleFinanceQuery(financeQuery, req.user);
+
   // "My plans" / "my upcoming bookings" / "details of my kerala trip" —
   // answered right here in the chat (a records list, or one specific plan's
   // full summary) instead of navigating to /plans or /bookings. No LLM call
@@ -80,15 +95,6 @@ app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth },
   // profile instead of the actual booked appointment.
   const appointmentsQuery = detectAppointmentsQuery(query);
   if (appointmentsQuery) return handleAppointmentsQuery(appointmentsQuery, req.user);
-
-  // "I earn 60000, rent is 20000..." / "spent 500 on groceries" / "save
-  // 50000 for a laptop" / "how much have I spent this month" — the
-  // personal finance agent. Entirely conversation-driven (no directory to
-  // search, nothing to book), and checked before parseIntent for the same
-  // reason every other domain-specific classifier above is: a fast,
-  // deterministic parser that never has to guess at a rupee amount.
-  const financeQuery = detectFinanceQuery(query);
-  if (financeQuery) return handleFinanceQuery(financeQuery, req.user);
 
   // "Best places to visit in X" / "where should I go" — inspiration, not a
   // flights/hotels search. Checked before parseIntent for the same reason
@@ -278,13 +284,21 @@ function emitFinance(sessionId: string, pending: PendingFinance) {
   } else if (pending.kind === 'summary' && pending.categories.length > 0) {
     emitAll(sessionId, financeSummarySurface('finance', pending.periodLabel, pending.categories, pending.totalSpent, pending.compare));
   } else if (pending.kind === 'portfolio') {
-    emitAll(sessionId, portfolioSurface('finance', pending.income, pending.expenseTotal, pending.expenseSource, pending.categories, pending.goals, pending.savingsRate));
+    emitAll(sessionId, portfolioSurface('finance', pending));
   } else if (pending.kind === 'goals_analysis') {
     emitAll(sessionId, goalsAnalysisSurface(
       'finance', pending.income, pending.expenseTotal, pending.expenseSource, pending.disposable,
       pending.goals, pending.totalRequired, pending.feasible, pending.shortfall, pending.surplus,
       pending.cuts, pending.extensions, pending.singleGoalName, pending.notFoundName,
     ));
+  } else if (pending.kind === 'expenses_breakdown') {
+    emitAll(sessionId, expensesBreakdownSurface('finance', pending.categories, pending.expenseSource));
+  } else if (pending.kind === 'cash_flow' && pending.cashFlow.some((c) => c.income > 0 || c.expenses > 0)) {
+    emitAll(sessionId, cashFlowSurface('finance', pending.cashFlow));
+  } else if (pending.kind === 'budget_utilization' && pending.limit > 0) {
+    emitAll(sessionId, budgetUtilizationSurface('finance', pending.pct, pending.spent, pending.limit));
+  } else if (pending.kind === 'recent_expenses' && pending.expenses.length > 0) {
+    emitAll(sessionId, recentExpensesSurface('finance', pending.expenses));
   }
 }
 
@@ -319,7 +333,7 @@ function runDoctorLookup(
 }
 
 function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
+  return toLocalIsoDate(new Date());
 }
 
 /** Same shape/filtering the GET /api/plans route already computes for the
@@ -534,7 +548,14 @@ function monthRange(period: 'this_month' | 'last_month'): { start: string; end: 
   const monthIdx = period === 'this_month' ? now.getMonth() : now.getMonth() - 1;
   const start = new Date(now.getFullYear(), monthIdx, 1);
   const end = new Date(now.getFullYear(), monthIdx + 1, 0);
-  return { start: start.toISOString().slice(0, 10), end: end.toISOString().slice(0, 10) };
+  // toLocalIsoDate, not .toISOString().slice(0,10) — the same UTC rollback
+  // bug fixed elsewhere in this file (see toLocalIsoDate's own comment)
+  // was silently making "this month" start on the 31st of last month in
+  // any timezone ahead of UTC, which broke the expense-trend chart
+  // entirely (every day's date fell in the wrong month and never matched
+  // a logged expense) and shifted every "this/last month" boundary by a
+  // day besides.
+  return { start: toLocalIsoDate(start), end: toLocalIsoDate(end) };
 }
 
 function getBudgetLimits(userId: string): Map<string, number> {
@@ -587,6 +608,45 @@ function toLocalIsoDate(d: Date): string {
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
+}
+
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Abbreviates a rupee amount for a chart label ("₹8,000" -> "₹8k",
+ * "₹1,50,000" -> "₹1.5L") — inr()'s full format is right for a stat line
+ * but too wide to sit under a bar in a 6-bar chart. */
+function shortInr(n: number): string {
+  if (n >= 100000) return `₹${(n / 100000).toFixed(n % 100000 === 0 ? 0 : 1)}L`;
+  if (n >= 1000) return `₹${(n / 1000).toFixed(n % 1000 === 0 ? 0 : 1)}k`;
+  return `₹${Math.round(n)}`;
+}
+
+/** Total spend per calendar month, the last 6 months including the
+ * current one — the expenses half of getCashFlowTrend's income-vs-
+ * expenses series, a month-over-month comparison (as opposed to a single
+ * month's daily pace, which doesn't answer "am I spending more than
+ * usual"). Zero-filled for any month with nothing logged, same reasoning
+ * as every other "don't just omit gaps" series in this file. */
+function getMonthlyExpenseHistory(userId: string): { label: string; value: number; amountLabel: string }[] {
+  const now = new Date();
+  const months: { year: number; month: number }[] = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth() });
+  }
+  const rangeStart = toLocalIsoDate(new Date(months[0].year, months[0].month, 1));
+  const rangeEnd = toLocalIsoDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+  const rows = db.prepare(
+    "SELECT strftime('%Y-%m', spent_on) as ym, SUM(amount) as total FROM expenses WHERE user_id = ? AND spent_on BETWEEN ? AND ? GROUP BY ym"
+  ).all(userId, rangeStart, rangeEnd) as { ym: string; total: number }[];
+  const byMonth = new Map(rows.map((r) => [r.ym, r.total]));
+
+  return months.map(({ year, month }) => {
+    const ym = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const value = byMonth.get(ym) || 0;
+    return { label: SHORT_MONTHS[month], value, amountLabel: shortInr(value) };
+  });
 }
 
 function monthsUntil(targetDate: string): number {
@@ -655,6 +715,136 @@ function suggestExtensions(disposable: number, items: GoalPlanItem[]): { name: s
     .filter((e): e is { name: string; newMonths: number; newDate: string } => e !== null);
 }
 
+const MOCK_INCOME = 75000;
+const MOCK_BUDGET: Record<string, number> = {
+  Rent: 20000, Food: 8000, Transport: 4000, 'Bills & Utilities': 3000,
+  Shopping: 5000, Entertainment: 4000, Health: 2000, Savings: 10000,
+};
+// Itemized, varied entries for the current month — so "recent expenses"
+// shows plausible individual transactions rather than one suspiciously
+// round lump sum per category.
+const MOCK_CURRENT_MONTH_EXPENSES: { category: string; amount: number; note: string }[] = [
+  { category: 'Rent', amount: 20000, note: 'Monthly rent' },
+  { category: 'Food', amount: 450, note: 'Breakfast run' },
+  { category: 'Food', amount: 1200, note: 'Groceries' },
+  { category: 'Food', amount: 800, note: 'Dinner out' },
+  { category: 'Transport', amount: 300, note: 'Cab rides' },
+  { category: 'Transport', amount: 250, note: 'Fuel' },
+  { category: 'Bills & Utilities', amount: 1800, note: 'Electricity bill' },
+  { category: 'Shopping', amount: 2200, note: 'New clothes' },
+  { category: 'Entertainment', amount: 600, note: 'Movie night' },
+  { category: 'Health', amount: 500, note: 'Pharmacy' },
+  { category: 'Savings', amount: 5000, note: 'SIP investment' },
+];
+// One lump entry per category for each of the 5 months before this one —
+// enough for the trend/history charts to show real shape without needing
+// dozens of hand-written rows; a true multiplier per month so the bars
+// aren't all identical.
+const MOCK_PAST_MONTH_MULTIPLIERS = [0.92, 1.08, 0.85, 1.15, 0.95];
+const MOCK_GOALS: { name: string; targetAmount: number; savedAmount: number; monthsFromNow: number | null }[] = [
+  { name: 'New Laptop', targetAmount: 60000, savedAmount: 60000, monthsFromNow: null }, // already reached
+  { name: 'Goa Trip', targetAmount: 80000, savedAmount: 32000, monthsFromNow: 5 },
+  { name: 'Emergency Fund', targetAmount: 150000, savedAmount: 20000, monthsFromNow: 10 },
+];
+
+/** Seeds a believable starting finance picture — income, a full budget,
+ * six months of expense history, and three goals at different stages —
+ * so the dashboard has something to show instead of a wall of empty-state
+ * hints. Runs only when ALL FOUR finance tables are empty for this user;
+ * anything they've actually typed (a real income figure, a real expense,
+ * even just one) makes this permanently a no-op, since the very next
+ * write upserts on top of whatever's there via the existing ON CONFLICT
+ * logic — mock data is a starting point, never something that overwrites
+ * or mixes with real numbers once they exist. */
+/** Fills in whatever's missing, piece by piece, rather than an all-or-
+ * nothing check — an account that already has a real income and 2-3
+ * hand-typed budget categories (but has never logged an actual expense,
+ * so every chart on the dashboard reads flat/empty) is exactly as much
+ * "needs seeding" as a brand-new signup, just for different pieces. Never
+ * overwrites anything real: income only fills if genuinely unset,
+ * categories are added only where the user hasn't already named that
+ * exact category, expense history only backfills when there's zero
+ * logged spend at all, goals only seed a starter set when there are none. */
+function ensureFinanceSeed(userId: string) {
+  const now = new Date().toISOString();
+
+  const profile = db.prepare('SELECT monthly_income FROM finance_profile WHERE user_id = ?').get(userId) as { monthly_income: number | null } | undefined;
+  if (!profile || profile.monthly_income === null || profile.monthly_income === undefined) {
+    db.prepare(`
+      INSERT INTO finance_profile (user_id, monthly_income, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET monthly_income = excluded.monthly_income, updated_at = excluded.updated_at
+    `).run(userId, MOCK_INCOME, now);
+  }
+
+  const existingCategories = new Set(
+    (db.prepare('SELECT category FROM budget_categories WHERE user_id = ?').all(userId) as { category: string }[]).map((r) => r.category)
+  );
+  for (const [category, limit] of Object.entries(MOCK_BUDGET)) {
+    if (existingCategories.has(category)) continue;
+    db.prepare('INSERT INTO budget_categories (id, user_id, category, monthly_limit, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(newId(), userId, category, limit, now);
+  }
+
+  const hasExpenses = db.prepare('SELECT 1 FROM expenses WHERE user_id = ?').get(userId);
+  if (!hasExpenses) {
+    for (const e of MOCK_CURRENT_MONTH_EXPENSES) {
+      db.prepare('INSERT INTO expenses (id, user_id, category, amount, note, spent_on, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(newId(), userId, e.category, e.amount, e.note, todayIso(), now);
+    }
+    const today = new Date();
+    MOCK_PAST_MONTH_MULTIPLIERS.forEach((mult, i) => {
+      const d = new Date(today.getFullYear(), today.getMonth() - (i + 1), 15);
+      const spentOn = toLocalIsoDate(d);
+      for (const [category, limit] of Object.entries(MOCK_BUDGET)) {
+        db.prepare('INSERT INTO expenses (id, user_id, category, amount, note, spent_on, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .run(newId(), userId, category, Math.round(limit * mult), null, spentOn, now);
+      }
+    });
+  }
+
+  const hasGoals = db.prepare('SELECT 1 FROM savings_goals WHERE user_id = ?').get(userId);
+  if (!hasGoals) {
+    for (const g of MOCK_GOALS) {
+      const targetDate = g.monthsFromNow !== null
+        ? (() => { const d = new Date(); d.setMonth(d.getMonth() + g.monthsFromNow!); return toLocalIsoDate(d); })()
+        : null;
+      db.prepare('INSERT INTO savings_goals (id, user_id, name, target_amount, target_date, saved_amount, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(newId(), userId, g.name, g.targetAmount, targetDate, g.savedAmount, now);
+    }
+  }
+}
+
+/** Current income (the only figure this app tracks — no historical
+ * snapshots) paired with real per-month expense totals, the last 6
+ * months — feeds the "Income vs Expenses" cash-flow area chart. */
+function getCashFlowTrend(userId: string): CashFlowPoint[] {
+  const income = getMonthlyIncome(userId) ?? 0;
+  return getMonthlyExpenseHistory(userId).map((m) => ({ label: m.label, income, expenses: m.value }));
+}
+
+/** Share of this month's total budget LIMIT actually spent — always real
+ * spend against a real limit (unlike getPlanningExpenses, which falls
+ * back to spend-as-baseline when no limit exists; a "% used" gauge has
+ * nothing to mean without an actual limit to measure against). */
+function getBudgetUtilization(userId: string): { pct: number; spent: number; limit: number } {
+  const limits = getBudgetLimits(userId);
+  const limit = [...limits.values()].reduce((s, v) => s + v, 0);
+  if (limit <= 0) return { pct: 0, spent: 0, limit: 0 };
+  const { start, end } = monthRange('this_month');
+  const spend = getCategorySpendMap(userId, start, end);
+  const spent = [...spend.values()].reduce((s, v) => s + v, 0);
+  return { pct: Math.round((spent / limit) * 100), spent, limit };
+}
+
+/** Most recently logged expenses, newest first — for the standalone
+ * "recent expenses" widget and the portfolio dashboard's transaction list. */
+function getRecentExpenses(userId: string, limit = 8): RecentExpenseRow[] {
+  const rows = db.prepare(
+    'SELECT category, amount, note, spent_on FROM expenses WHERE user_id = ? ORDER BY spent_on DESC, created_at DESC LIMIT ?'
+  ).all(userId, limit) as { category: string; amount: number; note: string | null; spent_on: string }[];
+  return rows.map((r) => ({ category: r.category, amount: r.amount, note: r.note, date: r.spent_on }));
+}
+
 /** Everything /api/plan needs to do for a chat-typed finance message —
  * unlike every other domain here, this one both reads AND writes on every
  * call (setting a budget, logging a spend, updating a goal are all direct
@@ -690,6 +880,7 @@ function handleFinanceQuery(query: FinanceQuery, user: AuthUser | undefined) {
       intent: { intent: 'refine', destination: '', agents: [], summary: "Sign in from the sidebar to start tracking your budget — then tell me again." },
     };
   }
+  ensureFinanceSeed(user.id);
 
   if (query.kind === 'set_budget') {
     if (query.income !== undefined) {
@@ -785,12 +976,64 @@ function handleFinanceQuery(query: FinanceQuery, user: AuthUser | undefined) {
     const goalRows = db.prepare('SELECT * FROM savings_goals WHERE user_id = ? ORDER BY created_at DESC').all(user.id) as SavingsGoalRow[];
     const goals: GoalSummary[] = goalRows.map((g) => ({ name: g.name, targetAmount: g.target_amount, savedAmount: g.saved_amount, targetDate: g.target_date }));
     const savingsRate = income !== undefined && income > 0 ? Math.max(0, Math.round(((income - expenseTotal) / income) * 100)) : undefined;
+    const cashFlow = getCashFlowTrend(user.id);
+    const recentExpenses = getRecentExpenses(user.id, 6);
 
-    session.pendingFinance = { kind: 'portfolio', income, expenseTotal, expenseSource, categories, goals, savingsRate };
+    session.pendingFinance = {
+      kind: 'portfolio', income, expenseTotal, expenseSource, categories, goals, savingsRate,
+      cashFlow, recentExpenses,
+    };
     const summary = income !== undefined
       ? `Here's your portfolio — ${inr(income)} income vs ${inr(expenseTotal)} in ${expenseSource === 'budget' ? 'budgeted' : 'logged'} expenses.`
       : `Here's your portfolio so far, based on ${inr(expenseTotal)} logged this month — tell me your monthly income too for the full picture.`;
     return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary } };
+  }
+
+  if (query.kind === 'expenses_breakdown') {
+    const { source: expenseSource, categories } = getPlanningExpenses(user.id);
+    session.pendingFinance = { kind: 'expenses_breakdown', categories, expenseSource };
+    const hasAny = categories.some((c) => c.spent > 0) || categories.some((c) => c.limit);
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'refine', destination: '', agents: [],
+        summary: hasAny ? "Here's your expenses breakdown:" : "You don't have any budget or spending logged yet — tell me your income and expenses first.",
+      },
+    };
+  }
+
+  if (query.kind === 'cash_flow') {
+    const cashFlow = getCashFlowTrend(user.id);
+    session.pendingFinance = { kind: 'cash_flow', cashFlow };
+    const hasAny = cashFlow.some((c) => c.income > 0 || c.expenses > 0);
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'refine', destination: '', agents: [],
+        summary: hasAny ? "Here's your income vs expenses trend:" : "I don't have enough history yet — tell me your income and log a few expenses first.",
+      },
+    };
+  }
+
+  if (query.kind === 'budget_utilization') {
+    const { pct, spent, limit } = getBudgetUtilization(user.id);
+    session.pendingFinance = { kind: 'budget_utilization', pct, spent, limit };
+    const summary = limit > 0
+      ? `You've used ${pct}% of your ${inr(limit)} budget this month (${inr(spent)} spent).`
+      : "You haven't set a budget yet — tell me your income and expenses first (e.g. \"I earn 70000, 20000 rent, 8000 groceries\").";
+    return { sessionId: session.id, intent: { intent: 'refine', destination: '', agents: [], summary } };
+  }
+
+  if (query.kind === 'recent_expenses') {
+    const expenses = getRecentExpenses(user.id, 8);
+    session.pendingFinance = { kind: 'recent_expenses', expenses };
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'refine', destination: '', agents: [],
+        summary: expenses.length ? 'Here are your most recent expenses:' : "You haven't logged any expenses yet — try \"spent 500 on groceries\".",
+      },
+    };
   }
 
   if (query.kind === 'goals_analysis') {

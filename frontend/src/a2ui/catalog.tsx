@@ -5,6 +5,18 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { PieChart } from '@/components/ui/pie-chart';
+import { BarChart as RechartsBarChart } from '@/components/ui/bar-chart';
+import { AreaChart as RechartsAreaChart } from '@/components/ui/area-chart';
+import { RadarChart as RechartsRadarChart } from '@/components/ui/radar-chart';
+import { RadialBarChart } from '@/components/ui/radial-bar-chart';
+
+const inrTick = (v: number) => {
+  if (Math.abs(v) >= 100000) return `₹${(v / 100000).toFixed(v % 100000 === 0 ? 0 : 1)}L`;
+  if (Math.abs(v) >= 1000) return `₹${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k`;
+  return `₹${Math.round(v)}`;
+};
+const inrFull = (v: number) => `₹${Math.round(v).toLocaleString('en-IN')}`;
 
 /** A2UI tone -> Fission Badge variant. */
 const BADGE_VARIANT: Record<string, 'default' | 'secondary' | 'success' | 'warning'> = {
@@ -111,49 +123,102 @@ export function Node({ store, surface, componentId, scope, onAction }: RenderPro
     }
     case 'Pie': {
       // Category-breakdown donut for the finance portfolio/goals-analysis
-      // cards — a CSS conic-gradient wedge chart rather than hand-computed
-      // SVG arc paths, since the browser can do the angle math for free
-      // and this only ever needs to render once per envelope (no live
-      // per-slice data binding the way List rows need).
-      const data: Array<{ label: string; value: number }> = Array.isArray(comp.data) ? comp.data : [];
-      const total = data.reduce((s, d) => s + (Number(d.value) || 0), 0);
-      const colors = ['#8c8060', '#5c5647', '#b8ad8a', '#423e34', '#d9d2bc', '#a89b7a', '#6f6549', '#c9c3b3', '#847a5f', '#e0dac8'];
-      let cumulative = 0;
-      const stops = total > 0
-        ? data.map((d, i) => {
-            const start = (cumulative / total) * 360;
-            cumulative += Number(d.value) || 0;
-            const end = (cumulative / total) * 360;
-            return `${colors[i % colors.length]} ${start}deg ${end}deg`;
-          })
-        : [];
-      const gradient = stops.length ? `conic-gradient(${stops.join(', ')})` : 'conic-gradient(var(--paper-dim) 0deg 360deg)';
+      // cards — the Fission design system's PieChart (recharts-backed),
+      // replacing the earlier hand-rolled conic-gradient version.
+      const data: Array<{ label: string; value: number; amountLabel?: string }> = Array.isArray(comp.data) ? comp.data : [];
+      if (!data.length) return null;
       return (
-        <div className="a2-pie-wrap">
-          <div className="a2-pie" style={{ background: gradient }}>
-            <div className="a2-pie-hole" />
-          </div>
-          {data.length > 0 && (
-            <div className="a2-pie-legend">
-              {data.map((d, i) => (
-                <div key={d.label} className="a2-pie-legend-item">
-                  <span className="a2-pie-swatch" style={{ background: colors[i % colors.length] }} />
-                  <span>{d.label} — {total > 0 ? Math.round(((Number(d.value) || 0) / total) * 100) : 0}%</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+        <PieChart
+          data={data}
+          dataKey="value"
+          nameKey="label"
+          height={220}
+          valueFormatter={inrFull}
+        />
+      );
+    }
+    case 'BarChart': {
+      // Month-over-month comparison (e.g. "Expenses — last 6 months") for
+      // the portfolio dashboard — the Fission design system's BarChart
+      // (recharts-backed), replacing the earlier hand-rolled CSS columns.
+      const data: Array<{ label: string; value: number; amountLabel?: string }> = Array.isArray(comp.data) ? comp.data : [];
+      if (!data.length) return null;
+      return (
+        <RechartsBarChart
+          data={data}
+          index="label"
+          categories={['value']}
+          config={{ value: { label: 'Expenses' } }}
+          height={220}
+          showLegend={false}
+          valueFormatter={inrTick}
+        />
+      );
+    }
+    case 'AreaChart': {
+      // "Income vs Expenses" cash-flow trend — two overlaid series over
+      // the last 6 months, the Fission design system's AreaChart.
+      const data: Array<Record<string, unknown>> = Array.isArray(comp.data) ? comp.data : [];
+      const categories: string[] = Array.isArray(comp.categories) ? comp.categories : [];
+      const index: string = typeof comp.index === 'string' ? comp.index : 'label';
+      const config = comp.config && typeof comp.config === 'object' ? comp.config : undefined;
+      if (!data.length || !categories.length) return null;
+      return (
+        <RechartsAreaChart
+          data={data}
+          index={index}
+          categories={categories}
+          config={config}
+          height={220}
+          valueFormatter={inrTick}
+        />
+      );
+    }
+    case 'RadarChart': {
+      // "Budget vs Actual" — % of each category's own budget limit spent
+      // so far, one axis per category, all on the same 0-100(+) scale.
+      const data: Array<Record<string, unknown>> = Array.isArray(comp.data) ? comp.data : [];
+      const categories: string[] = Array.isArray(comp.categories) ? comp.categories : [];
+      const index: string = typeof comp.index === 'string' ? comp.index : 'label';
+      const config = comp.config && typeof comp.config === 'object' ? comp.config : undefined;
+      if (!data.length || !categories.length) return null;
+      return (
+        <RechartsRadarChart
+          data={data}
+          index={index}
+          categories={categories}
+          config={config}
+          height={260}
+          valueFormatter={(v) => `${Math.round(v)}%`}
+        />
+      );
+    }
+    case 'Gauge': {
+      // A single-ring radial gauge — "62% of this month's budget used" —
+      // built from the design system's RadialBarChart with exactly one row.
+      const label: string = typeof comp.label === 'string' ? comp.label : 'Used';
+      const value = Math.max(0, Math.min(100, Number(store.resolve(comp.value, ctx)) || 0));
+      return (
+        <RadialBarChart
+          data={[{ name: label, value }]}
+          dataKey="value"
+          nameKey="name"
+          maxValue={100}
+          height={200}
+          valueFormatter={(v) => `${Math.round(v)}%`}
+          showLegend={false}
+          showTooltip={false}
+        />
       );
     }
     case 'Divider':
       return <div className="a2-divider" />;
     case 'Row':
-      return <div className="a2-row" data-cid={comp.id} style={rowColStyle(comp)}>{kids(comp.children)}</div>;
+      return <div className={`a2-row${comp.panel ? ' a2-panel' : ''}${comp.grid ? ' a2-grid-row' : ''}`} data-cid={comp.id} style={rowColStyle(comp)}>{kids(comp.children)}</div>;
     case 'Column':
-      return <div className="a2-column" data-cid={comp.id} style={rowColStyle(comp)}>{kids(comp.children)}</div>;
+      return <div className={`a2-column${comp.panel ? ' a2-panel' : ''}`} data-cid={comp.id} style={rowColStyle(comp)}>{kids(comp.children)}</div>;
     case 'List':
-      return <div className="a2-list">{kids(comp.children)}</div>;
+      return <div className={`a2-list${comp.scroll ? ' a2-list-scroll' : ''}`}>{kids(comp.children)}</div>;
     case 'Card':
       return (
         <div className="a2-card">

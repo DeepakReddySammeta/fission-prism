@@ -81,6 +81,24 @@ export interface GoalPlanItem extends GoalSummary {
   assumedTimeline?: boolean;
 }
 
+/** One month's income vs. expenses, for the cash-flow area chart. Income
+ * is the current monthly_income figure repeated across every month (this
+ * app has no historical income snapshots to draw on) — expenses are real
+ * per-month totals. */
+export interface CashFlowPoint {
+  label: string;
+  income: number;
+  expenses: number;
+}
+
+/** One logged expense row, for the "recent expenses" widget. */
+export interface RecentExpenseRow {
+  category: string;
+  amount: number;
+  note: string | null;
+  date: string;
+}
+
 /** What a chat-typed finance message should render once the SSE stream
  * connects — set in /api/plan, consumed the same way pendingMyRecords/
  * pendingAppointments are. 'unsupported' and 'unclear' both carry
@@ -95,6 +113,8 @@ export type PendingFinance =
   | {
       kind: 'portfolio'; income?: number; expenseTotal: number; expenseSource: 'budget' | 'actual';
       categories: CategoryStatus[]; goals: GoalSummary[]; savingsRate?: number;
+      cashFlow: CashFlowPoint[];
+      recentExpenses: RecentExpenseRow[];
     }
   | {
       kind: 'goals_analysis'; income?: number; expenseTotal: number; expenseSource: 'budget' | 'actual';
@@ -104,6 +124,10 @@ export type PendingFinance =
       extensions?: { name: string; newMonths: number; newDate: string }[];
       singleGoalName?: string; notFoundName?: string;
     }
+  | { kind: 'expenses_breakdown'; categories: CategoryStatus[]; expenseSource: 'budget' | 'actual' }
+  | { kind: 'cash_flow'; cashFlow: CashFlowPoint[] }
+  | { kind: 'budget_utilization'; pct: number; spent: number; limit: number }
+  | { kind: 'recent_expenses'; expenses: RecentExpenseRow[] }
   | { kind: 'unsupported'; action: string }
   | { kind: 'unclear' };
 

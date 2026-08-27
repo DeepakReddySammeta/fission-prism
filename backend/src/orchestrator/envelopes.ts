@@ -3,7 +3,10 @@ import type {
 } from '../types';
 import type { DoctorMatch, BookingHints } from '../agents/health';
 import { APPOINTMENT_TIME_SLOTS } from '../agents/health';
-import type { PlanRecordSummary, AppointmentSummary, CategoryStatus, GoalSummary, GoalPlanItem } from './sessions';
+import type {
+  PlanRecordSummary, AppointmentSummary, CategoryStatus, GoalSummary, GoalPlanItem,
+  CashFlowPoint, RecentExpenseRow,
+} from './sessions';
 import { A2UI_VERSION, CATALOG_ID } from '../types';
 
 /* ---------------- Curated imagery ----------------
@@ -1391,80 +1394,295 @@ export function financeSummarySurface(
   ];
 }
 
-/** "Give me my portfolio" — the one-screen financial overview: income vs
- * expenses, a savings-rate headline, a category-spend donut, and a compact
- * list of every goal's progress. Unlike the other finance surfaces this
- * deliberately mixes several already-existing shapes (Bar's tone logic,
- * the goal-row pattern from savingsGoalsListSurface) into one card, since
- * "a real dashboard" was the explicit ask — one screen, not a link to
- * three others. */
-export function portfolioSurface(
-  surfaceId: string, income: number | undefined, expenseTotal: number, expenseSource: 'budget' | 'actual',
-  categories: CategoryStatus[], goals: GoalSummary[], savingsRate: number | undefined
-): Envelope[] {
-  const pieRows = categories.filter((c) => c.spent > 0).map((c) => ({ label: c.category, value: c.spent }));
-  const goalRows = goals.map((g) => {
+/* ---- Dashboard widget "blocks" ----
+ * Each builder below returns the ids/components (and, for List-driven
+ * ones, the data rows) for ONE self-contained widget — reused both by
+ * portfolioSurface (which strings several together in one Card) and by
+ * the standalone single-widget surfaces further down, so "give me my
+ * portfolio" and "give me my expenses breakdown" render the identical
+ * pie, not two different implementations that could drift apart. */
+
+interface Block {
+  ids: string[];
+  components: ComponentDef[];
+}
+
+function statsTilesBlock(
+  income: number | undefined, expenseTotal: number, expenseSource: 'budget' | 'actual', savingsRate: number | undefined
+): Block {
+  if (income === undefined) {
+    return {
+      ids: ['no_income_line'],
+      components: [{ id: 'no_income_line', component: 'Text', variant: 'body', text: `Spent so far this month: ${inr(expenseTotal)}` }],
+    };
+  }
+  const disposable = income - expenseTotal;
+  const statChildren = ['stat_income', 'stat_expense', 'stat_disposable'];
+  const components: ComponentDef[] = [
+    { id: 'stats_row', component: 'Row', gap: 10, justify: 'between', children: statChildren },
+    { id: 'stat_income', component: 'Column', gap: 2, panel: true, weight: 1, children: ['stat_income_label', 'stat_income_value'] },
+    { id: 'stat_income_label', component: 'Text', variant: 'caption', text: 'Income' },
+    { id: 'stat_income_value', component: 'Text', variant: 'h3', text: inr(income) },
+    { id: 'stat_expense', component: 'Column', gap: 2, panel: true, weight: 1, children: ['stat_expense_label', 'stat_expense_value'] },
+    { id: 'stat_expense_label', component: 'Text', variant: 'caption', text: expenseSource === 'budget' ? 'Budgeted' : 'Spent' },
+    { id: 'stat_expense_value', component: 'Text', variant: 'h3', text: inr(expenseTotal) },
+    { id: 'stat_disposable', component: 'Column', gap: 2, panel: true, weight: 1, children: ['stat_disposable_label', 'stat_disposable_value'] },
+    { id: 'stat_disposable_label', component: 'Text', variant: 'caption', text: disposable >= 0 ? 'Net savings' : 'Over budget' },
+    { id: 'stat_disposable_value', component: 'Text', variant: 'h3', text: inr(Math.abs(disposable)) },
+  ];
+  if (savingsRate !== undefined) {
+    statChildren.push('stat_rate');
+    components.push(
+      { id: 'stat_rate', component: 'Column', gap: 2, panel: true, weight: 1, children: ['stat_rate_label', 'stat_rate_value'] },
+      { id: 'stat_rate_label', component: 'Text', variant: 'caption', text: 'Savings rate' },
+      { id: 'stat_rate_value', component: 'Text', variant: 'h3', text: `${savingsRate}%` },
+    );
+  }
+  return { ids: ['stats_row'], components };
+}
+
+/** "Income vs Expenses" — supersedes an expenses-only bar chart with a
+ * real two-series comparison; income is the current figure repeated
+ * across months (see CashFlowPoint's own comment), expenses are real. */
+function cashFlowBlock(cashFlow: CashFlowPoint[], title: string): Block | null {
+  if (!cashFlow.some((c) => c.income > 0 || c.expenses > 0)) return null;
+  return {
+    ids: ['cashflow_label', 'cashflow'],
+    components: [
+      { id: 'cashflow_label', component: 'Text', variant: 'h3', text: title },
+      {
+        id: 'cashflow', component: 'AreaChart', data: cashFlow, index: 'label', categories: ['income', 'expenses'],
+        config: { income: { label: 'Income' }, expenses: { label: 'Expenses' } },
+      },
+    ],
+  };
+}
+
+/** "Where it went" — falls back to the budget allocation itself when
+ * there's no logged spend yet (see the usingBudgetForPie flag), so a
+ * brand-new budget doesn't render an empty pie. */
+function expensesBreakdownBlock(categories: CategoryStatus[], titleOverride?: string): (Block & { usingBudgetForPie: boolean }) | null {
+  const spentRows = categories.filter((c) => c.spent > 0);
+  const usingBudgetForPie = spentRows.length === 0 && categories.some((c) => c.limit);
+  const pieSourceRows = usingBudgetForPie ? categories.filter((c) => c.limit) : spentRows;
+  if (!pieSourceRows.length) return null;
+  const pieRows = pieSourceRows.map((c) => {
+    const amount = usingBudgetForPie ? c.limit! : c.spent;
+    return { label: c.category, value: amount, amountLabel: inr(amount) };
+  });
+  return {
+    ids: ['pie_label', 'pie'],
+    components: [
+      { id: 'pie_label', component: 'Text', variant: 'h3', text: titleOverride ?? (usingBudgetForPie ? 'Budget allocation' : 'Where it went') },
+      { id: 'pie', component: 'Pie', data: pieRows },
+    ],
+    usingBudgetForPie,
+  };
+}
+
+/** A single-ring gauge — "62% of this month's budget used." Nothing to
+ * show without an actual limit to measure spend against. */
+function budgetUtilizationBlock(pct: number, spent: number, limit: number, title: string): Block | null {
+  if (limit <= 0) return null;
+  return {
+    ids: ['gauge_label', 'gauge', 'gauge_caption'],
+    components: [
+      { id: 'gauge_label', component: 'Text', variant: 'h3', text: title },
+      { id: 'gauge', component: 'Gauge', value: pct, label: 'Used' },
+      { id: 'gauge_caption', component: 'Text', variant: 'caption', text: `${inr(spent)} of ${inr(limit)} this month` },
+    ],
+  };
+}
+
+
+/** The last few logged expenses, newest first. */
+/** Each row reads name/amount + a thin bar, the same compact pattern the
+ * "This Month" summary card already uses for categories — bar length is
+ * this transaction's amount relative to the largest one in the list, so
+ * even without a budget limit to measure against, size differences are
+ * still visible at a glance. The list itself scrolls past a fixed height
+ * (see the surface-finance CSS) instead of growing the whole card taller
+ * as more transactions come in. */
+function recentExpensesBlock(expenses: RecentExpenseRow[], title: string): (Block & { rows: Record<string, unknown>[] }) | null {
+  if (!expenses.length) return null;
+  const maxAmount = Math.max(...expenses.map((e) => e.amount), 1);
+  const rows = expenses.map((e) => ({
+    category: e.category,
+    amountLabel: inr(e.amount),
+    pct: Math.max(4, Math.round((e.amount / maxAmount) * 100)),
+    meta: `${formatAppointmentDate(e.date)}${e.note ? ` · ${e.note}` : ''}`,
+  }));
+  return {
+    ids: ['recent_label', 'recent_list'],
+    components: [
+      { id: 'recent_label', component: 'Text', variant: 'h3', text: title },
+      { id: 'recent_list', component: 'List', scroll: true, children: { path: '/recent', componentId: 'recent_row' } },
+      { id: 'recent_row', component: 'Column', gap: 4, children: ['recent_top', 'recent_bar', 'recent_meta'] },
+      { id: 'recent_top', component: 'Row', justify: 'between', children: ['recent_name', 'recent_amount'] },
+      { id: 'recent_name', component: 'Text', variant: 'body', text: { path: 'category' } },
+      { id: 'recent_amount', component: 'Text', variant: 'caption', text: { path: 'amountLabel' } },
+      { id: 'recent_bar', component: 'Bar', value: { path: 'pct' }, tone: 'brand' },
+      { id: 'recent_meta', component: 'Text', variant: 'caption', text: { path: 'meta' } },
+    ],
+    rows,
+  };
+}
+
+/** Every goal's progress bar. */
+function goalsBlock(goals: GoalSummary[], title: string): (Block & { rows: Record<string, unknown>[] }) | null {
+  if (!goals.length) return null;
+  const rows = goals.map((g) => {
     const pct = g.targetAmount > 0 ? Math.min(100, Math.round((g.savedAmount / g.targetAmount) * 100)) : 0;
     return { name: g.name, pct, tone: pct >= 100 ? 'success' : 'brand', metaLabel: `${inr(g.savedAmount)} of ${inr(g.targetAmount)} (${pct}%)` };
   });
+  return {
+    ids: ['goals_label', 'goals_list'],
+    components: [
+      { id: 'goals_label', component: 'Text', variant: 'h3', text: title },
+      { id: 'goals_list', component: 'List', children: { path: '/goals', componentId: 'pf_goal_row' } },
+      { id: 'pf_goal_row', component: 'Column', gap: 4, panel: true, children: ['pf_goal_name', 'pf_goal_bar', 'pf_goal_meta'] },
+      { id: 'pf_goal_name', component: 'Text', variant: 'body', text: { path: 'name' } },
+      { id: 'pf_goal_bar', component: 'Bar', value: { path: 'pct' }, tone: { path: 'tone' } },
+      { id: 'pf_goal_meta', component: 'Text', variant: 'caption', text: { path: 'metaLabel' } },
+    ],
+    rows,
+  };
+}
 
-  const children = ['head'];
+export interface PortfolioData {
+  income?: number;
+  expenseTotal: number;
+  expenseSource: 'budget' | 'actual';
+  categories: CategoryStatus[];
+  goals: GoalSummary[];
+  savingsRate?: number;
+  cashFlow: CashFlowPoint[];
+  recentExpenses: RecentExpenseRow[];
+}
+
+/** "Give me my portfolio" — a real dashboard grid: a full-width stat-tile
+ * row, then every other widget paired two-to-a-row (Cash Flow + Breakdown,
+ * Radar + Recent Expenses, Goals on its own), each its own bordered card.
+ * Built from the same block builders the standalone single-widget
+ * surfaces use below, so "give me my portfolio" and "give me my expenses
+ * breakdown" render the identical pie rather than two implementations
+ * that could drift apart — only the composition (grid vs. one card)
+ * differs here. Budget Utilization stays available as its own standalone
+ * widget (see budgetUtilizationSurface) but sat out of the dashboard grid
+ * itself, same as the since-removed Budget vs Actual radar — both cut at
+ * the user's request in favor of a leaner grid. */
+export function portfolioSurface(surfaceId: string, data: PortfolioData): Envelope[] {
+  const { income, expenseTotal, expenseSource, categories, goals, savingsRate, cashFlow, recentExpenses } = data;
+
+  const stats = statsTilesBlock(income, expenseTotal, expenseSource, savingsRate);
+  const flow = cashFlowBlock(cashFlow, 'Income vs Expenses — last 6 months');
+  const pie = expensesBreakdownBlock(categories);
+  const recent = recentExpensesBlock(recentExpenses, 'Recent Expenses');
+  const goalsW = goalsBlock(goals, 'Goals');
+
+  const children = ['head', ...stats.ids];
   const components: ComponentDef[] = [
     { id: 'root', component: 'Card', child: 'body' },
     { id: 'body', component: 'Column', gap: 16, children },
     { id: 'head', component: 'Text', variant: 'h2', text: 'Your Portfolio' },
+    ...stats.components,
   ];
 
-  if (income !== undefined) {
-    const disposable = income - expenseTotal;
-    children.push('stats_row');
-    components.push(
-      { id: 'stats_row', component: 'Row', justify: 'between', children: ['stat_income', 'stat_expense', 'stat_disposable'] },
-      { id: 'stat_income', component: 'Column', gap: 2, children: ['stat_income_label', 'stat_income_value'] },
-      { id: 'stat_income_label', component: 'Text', variant: 'caption', text: 'Income' },
-      { id: 'stat_income_value', component: 'Text', variant: 'h3', text: inr(income) },
-      { id: 'stat_expense', component: 'Column', gap: 2, children: ['stat_expense_label', 'stat_expense_value'] },
-      { id: 'stat_expense_label', component: 'Text', variant: 'caption', text: expenseSource === 'budget' ? 'Budgeted' : 'Spent' },
-      { id: 'stat_expense_value', component: 'Text', variant: 'h3', text: inr(expenseTotal) },
-      { id: 'stat_disposable', component: 'Column', gap: 2, children: ['stat_disposable_label', 'stat_disposable_value'] },
-      { id: 'stat_disposable_label', component: 'Text', variant: 'caption', text: disposable >= 0 ? 'Left over' : 'Over budget' },
-      { id: 'stat_disposable_value', component: 'Text', variant: 'h3', text: inr(Math.abs(disposable)) },
-    );
-    if (savingsRate !== undefined) {
-      children.push('savings_rate_line');
-      components.push({ id: 'savings_rate_line', component: 'Text', variant: 'caption', text: `Savings rate: ${savingsRate}% of income` });
+  const panels = [
+    flow && { id: 'panel_flow', block: flow },
+    pie && { id: 'panel_pie', block: pie },
+    recent && { id: 'panel_recent', block: recent },
+    goalsW && { id: 'panel_goals', block: goalsW },
+  ].filter((p): p is { id: string; block: Block } => Boolean(p));
+
+  for (let i = 0; i < panels.length; i += 2) {
+    const pair = panels.slice(i, i + 2);
+    const rowId = `grid_row_${i}`;
+    children.push(rowId);
+    components.push({ id: rowId, component: 'Row', gap: 16, align: 'stretch', grid: true, children: pair.map((p) => p.id) });
+    for (const p of pair) {
+      components.push({ id: p.id, component: 'Column', gap: 10, panel: true, weight: 1, children: p.block.ids });
+      components.push(...p.block.components);
     }
-  } else {
-    children.push('no_income_line');
-    components.push({ id: 'no_income_line', component: 'Text', variant: 'body', text: `Spent so far this month: ${inr(expenseTotal)}` });
   }
 
-  if (pieRows.length) {
-    children.push('divider_pie', 'pie_label', 'pie');
-    components.push(
-      { id: 'divider_pie', component: 'Divider' },
-      { id: 'pie_label', component: 'Text', variant: 'h3', text: 'Where it went' },
-      { id: 'pie', component: 'Pie', data: pieRows },
-    );
+  if (!flow && !pie) {
+    children.push('no_spend_hint');
+    components.push({
+      id: 'no_spend_hint', component: 'Text', variant: 'caption',
+      text: 'Log an expense (e.g. "spent 500 on groceries") to see a spending trend and category breakdown here.',
+    });
   }
 
-  if (goalRows.length) {
-    children.push('divider_goals', 'goals_label', 'goals_list');
-    components.push(
-      { id: 'divider_goals', component: 'Divider' },
-      { id: 'goals_label', component: 'Text', variant: 'h3', text: 'Goals' },
-      { id: 'goals_list', component: 'List', children: { path: '/goals', componentId: 'pf_goal_row' } },
-      { id: 'pf_goal_row', component: 'Column', gap: 4, children: ['pf_goal_name', 'pf_goal_bar', 'pf_goal_meta'] },
-      { id: 'pf_goal_name', component: 'Text', variant: 'body', text: { path: 'name' } },
-      { id: 'pf_goal_bar', component: 'Bar', value: { path: 'pct' }, tone: { path: 'tone' } },
-      { id: 'pf_goal_meta', component: 'Text', variant: 'caption', text: { path: 'metaLabel' } },
-    );
-  }
+  const dataEnvelopes: Envelope[] = [];
+  if (recent) dataEnvelopes.push(updateData(surfaceId, '/recent', recent.rows));
+  if (goalsW) dataEnvelopes.push(updateData(surfaceId, '/goals', goalsW.rows));
 
   return [
     createSurface(surfaceId, 'Portfolio', '#f25011'),
     { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
-    ...(goalRows.length ? [updateData(surfaceId, '/goals', goalRows)] : []),
+    ...dataEnvelopes,
+  ];
+}
+
+/** "Give me my expenses breakdown" — the category pie alone. The block's
+ * own sub-label ("Where it went" vs "Budget allocation") stays under the
+ * screen's own "Expenses Breakdown" heading — it says which data source
+ * is shown, not a repeat of the same title. */
+export function expensesBreakdownSurface(surfaceId: string, categories: CategoryStatus[], _expenseSource: 'budget' | 'actual'): Envelope[] {
+  const pie = expensesBreakdownBlock(categories);
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 14, children: ['head', ...(pie ? pie.ids : ['no_data'])] },
+    { id: 'head', component: 'Text', variant: 'h2', text: 'Expenses Breakdown' },
+    ...(pie ? pie.components : [{ id: 'no_data', component: 'Text', variant: 'body', text: "You don't have any budget or spending logged yet." } as ComponentDef]),
+  ];
+  return [
+    createSurface(surfaceId, 'Expenses Breakdown', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+  ];
+}
+
+/** "Show my income vs expenses trend" / "cash flow" — the area chart alone. */
+export function cashFlowSurface(surfaceId: string, cashFlow: CashFlowPoint[]): Envelope[] {
+  const flow = cashFlowBlock(cashFlow, 'Cash Flow');
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 14, children: flow ? flow.ids : ['no_data'] },
+    ...(flow ? flow.components : [{ id: 'no_data', component: 'Text', variant: 'body', text: "I don't have enough history yet." } as ComponentDef]),
+  ];
+  return [
+    createSurface(surfaceId, 'Cash Flow', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+  ];
+}
+
+/** "How much of my budget have I used" — the gauge alone. */
+export function budgetUtilizationSurface(surfaceId: string, pct: number, spent: number, limit: number): Envelope[] {
+  const gauge = budgetUtilizationBlock(pct, spent, limit, 'Budget Utilization');
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 14, children: gauge ? gauge.ids : ['no_data'] },
+    ...(gauge ? gauge.components : [{ id: 'no_data', component: 'Text', variant: 'body', text: "You haven't set a budget yet." } as ComponentDef]),
+  ];
+  return [
+    createSurface(surfaceId, 'Budget Utilization', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+  ];
+}
+
+/** "Give me my recent expenses" / "show my transactions" — the list alone. */
+export function recentExpensesSurface(surfaceId: string, expenses: RecentExpenseRow[]): Envelope[] {
+  const recent = recentExpensesBlock(expenses, 'Recent Expenses');
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', gap: 14, children: recent ? recent.ids : ['no_data'] },
+    ...(recent ? recent.components : [{ id: 'no_data', component: 'Text', variant: 'body', text: "You haven't logged any expenses yet." } as ComponentDef]),
+  ];
+  return [
+    createSurface(surfaceId, 'Recent Expenses', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    ...(recent ? [updateData(surfaceId, '/recent', recent.rows)] : []),
   ];
 }
 
@@ -1520,14 +1738,14 @@ export function goalsAnalysisSurface(
   if (income !== undefined && disposable !== undefined) {
     children.push('stats_row');
     components.push(
-      { id: 'stats_row', component: 'Row', justify: 'between', children: ['stat_income', 'stat_expense', 'stat_disposable'] },
-      { id: 'stat_income', component: 'Column', gap: 2, children: ['stat_income_label', 'stat_income_value'] },
+      { id: 'stats_row', component: 'Row', gap: 10, justify: 'between', children: ['stat_income', 'stat_expense', 'stat_disposable'] },
+      { id: 'stat_income', component: 'Column', gap: 2, panel: true, weight: 1, children: ['stat_income_label', 'stat_income_value'] },
       { id: 'stat_income_label', component: 'Text', variant: 'caption', text: 'Income' },
       { id: 'stat_income_value', component: 'Text', variant: 'h3', text: inr(income) },
-      { id: 'stat_expense', component: 'Column', gap: 2, children: ['stat_expense_label', 'stat_expense_value'] },
+      { id: 'stat_expense', component: 'Column', gap: 2, panel: true, weight: 1, children: ['stat_expense_label', 'stat_expense_value'] },
       { id: 'stat_expense_label', component: 'Text', variant: 'caption', text: expenseSource === 'budget' ? 'Budgeted' : 'Spent' },
       { id: 'stat_expense_value', component: 'Text', variant: 'h3', text: inr(expenseTotal) },
-      { id: 'stat_disposable', component: 'Column', gap: 2, children: ['stat_disposable_label', 'stat_disposable_value'] },
+      { id: 'stat_disposable', component: 'Column', gap: 2, panel: true, weight: 1, children: ['stat_disposable_label', 'stat_disposable_value'] },
       { id: 'stat_disposable_label', component: 'Text', variant: 'caption', text: 'Available to save' },
       { id: 'stat_disposable_value', component: 'Text', variant: 'h3', text: inr(disposable) },
       { id: 'divider_stats', component: 'Divider' },
@@ -1542,7 +1760,7 @@ export function goalsAnalysisSurface(
     children.push('list');
     components.push(
       { id: 'list', component: 'List', children: { path: '/goals', componentId: 'ga_row' } },
-      { id: 'ga_row', component: 'Column', gap: 3, children: ['ga_name', 'ga_remaining', 'ga_date', 'ga_required'] },
+      { id: 'ga_row', component: 'Column', gap: 3, panel: true, children: ['ga_name', 'ga_remaining', 'ga_date', 'ga_required'] },
       { id: 'ga_name', component: 'Text', variant: 'h3', text: { path: 'name' } },
       { id: 'ga_remaining', component: 'Text', variant: 'caption', text: { path: 'remainingLabel' } },
       { id: 'ga_date', component: 'Text', variant: 'caption', text: { path: 'dateLabel' } },
