@@ -230,6 +230,12 @@ export interface MyRecordsIntent {
    * "kerala" here, matched against the user's saved plans by destination or
    * title. Undefined for a bare "my plans"/"my upcoming bookings" query. */
   reference?: string;
+  /** The same three-way split the My Bookings page's own tabs use (see
+   * MyBookings.tsx): a saved trip with both a flight and a room is 'trips',
+   * flight with no room is 'flights', room with no flight is 'rooms'.
+   * Undefined means no type was named — show everything, same as the page's
+   * default "Full Trips" tab not being forced on chat. */
+  bookingType?: 'trips' | 'flights' | 'rooms';
 }
 
 /** Optimal-string-alignment edit distance (Levenshtein + adjacent-swap
@@ -276,6 +282,8 @@ const RECORD_NOUNS = ['plan', 'plans', 'trip', 'trips', 'booking', 'bookings', '
 const BOOKING_WORDS = ['booking', 'bookings', 'reservation', 'reservations', 'booked', 'trip', 'trips'];
 const UPCOMING_WORDS = ['upcoming', 'future', 'next'];
 const PAST_WORDS = ['past', 'previous', 'old', 'history'];
+const ROOM_TYPE_WORDS = ['room', 'rooms', 'hotel', 'hotels'];
+const FLIGHT_TYPE_WORDS = ['flight', 'flights'];
 
 /** Chat-box equivalent of the "My Plans"/"My Bookings" sidebar links — checked
  * before any LLM call in /api/plan, since this is a navigation request, not
@@ -302,22 +310,37 @@ export function detectMyRecordsIntent(query: string): MyRecordsIntent | undefine
   const recordType: 'plans' | 'bookings' = words.some((w) => fuzzyIncludes(w, BOOKING_WORDS)) ? 'bookings' : 'plans';
   const filter: 'upcoming' | 'past' | 'all' = hasUpcoming ? 'upcoming' : hasPast ? 'past' : 'all';
 
+  // "room"/"hotel" or "flight" narrows to one of the My Bookings page's own
+  // tabs (see MyBookings.tsx: full trip = flight+room, flight-only, room-
+  // only) — checked before "full trip(s)" since a bare "trip(s)" is already
+  // the RECORD_NOUN every records query carries and would otherwise always
+  // match here too.
+  const hasRoomWord = words.some((w) => fuzzyIncludes(w, ROOM_TYPE_WORDS));
+  const hasFlightWord = words.some((w) => fuzzyIncludes(w, FLIGHT_TYPE_WORDS));
+  const hasFullTripPhrase = /\b(full|complete)\s+trips?\b/i.test(query);
+  const bookingType: 'trips' | 'flights' | 'rooms' | undefined =
+    hasRoomWord ? 'rooms' : hasFlightWord ? 'flights' : hasFullTripPhrase ? 'trips' : undefined;
+
   // Whatever's left after stripping every word this function itself already
   // understood — filler ("show", "me", "of", "details"...), the record noun,
-  // and the upcoming/past modifier — is a best-effort name for a *specific*
-  // plan ("show me details of my kerala trip" -> "kerala"), matched later
-  // against the user's saved plans by destination/title. Empty means a
-  // plain list query.
+  // the upcoming/past modifier, and the booking-type word — is a best-effort
+  // name for a *specific* plan ("show me details of my kerala trip" ->
+  // "kerala"), matched later against the user's saved plans by destination/
+  // title. Empty means a plain list query. Without this, "show my room
+  // bookings" left "room" behind as a reference, which matches no
+  // destination and silently ignored the filter (see bookingType above).
   const FILLER = ['show', 'give', 'tell', 'list', 'see', 'view', 'get', 'display', 'what', 'whats',
     'details', 'detail', 'of', 'about', 'on', 'me', 'my', 'the', 'please', 'can', 'you', 'could',
     'is', 'are', 'for', 'a', 'an', 'and'];
   const reference = words
     .filter((w) => !FILLER.includes(w) && !fuzzyIncludes(w, RECORD_NOUNS)
-      && !(hasUpcoming && fuzzyIncludes(w, UPCOMING_WORDS)) && !(hasPast && fuzzyIncludes(w, PAST_WORDS)))
+      && !(hasUpcoming && fuzzyIncludes(w, UPCOMING_WORDS)) && !(hasPast && fuzzyIncludes(w, PAST_WORDS))
+      && !(hasRoomWord && fuzzyIncludes(w, ROOM_TYPE_WORDS)) && !(hasFlightWord && fuzzyIncludes(w, FLIGHT_TYPE_WORDS))
+      && !(hasFullTripPhrase && (w === 'full' || w === 'complete')))
     .join(' ')
     .trim();
 
-  return { recordType, filter, reference: reference || undefined };
+  return { recordType, filter, reference: reference || undefined, bookingType };
 }
 
 export type AppointmentsQuery =

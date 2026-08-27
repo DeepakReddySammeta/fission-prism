@@ -426,7 +426,7 @@ body {
 /* A list opted into scroll:true (the dashboard's Recent Expenses widget)
  * caps its own height instead of growing the surrounding card taller as
  * more rows arrive — the card around it stays a fixed, predictable size. */
-.a2-list-scroll { max-height: 260px; overflow-y: auto; padding-right: 6px; }
+.a2-list-scroll { max-height: 200px; overflow-y: auto; padding-right: 6px; }
 .a2-row { display: flex; flex-direction: row; gap: 12px; align-items: center; }
 .a2-list .a2-row { align-items: center; }
 .a2-list .a2-row .a2-mono { font-size: 15px; }
@@ -443,6 +443,16 @@ body {
   box-shadow: var(--shadow-sm);
 }
 .a2-list > * + * { margin-top: 0; }
+/* A list opted into layout:'grid' (goal cards, both in the portfolio
+ * widget and the goals-analysis breakdown) — two per row instead of
+ * stacked one under another, each already its own bordered panel so the
+ * list's own divider styling above is correctly suppressed the same way
+ * a single-column panel list already is. */
+.a2-list-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.a2-list-grid > * + * { border-top: none; padding-top: 0; margin-top: 0; }
+@media (max-width: 560px) {
+  .a2-list-grid { grid-template-columns: 1fr; }
+}
 
 .a2-text { white-space: pre-wrap; }
 .a2-h1 { font-family: var(--serif); font-size: 26px; font-weight: 700; color: var(--heading); }
@@ -475,7 +485,23 @@ body {
  * panel:true, reused for dashboard stat tiles and per-goal breakdown cards
  * so a Column stops being just an invisible layout box when the content
  * is meant to read as its own card, matching the surface's own border. */
-.a2-panel { border: 1px solid var(--rule); border-radius: 12px; padding: 12px 14px; background: var(--paper-dim); }
+.a2-panel {
+  border: 1px solid var(--rule); border-radius: 12px; padding: 12px 14px; background: var(--paper-dim);
+  /* A single faint shadow (--shadow-sm) read as basically flat against the
+   * card's own white ground — two layered shadows (a tight contact shadow
+   * plus a softer, wider ambient one) is what actually reads as "raised"
+   * at rest, not just on hover. */
+  box-shadow: 0 2px 6px rgba(24, 24, 27, 0.10), 0 10px 28px rgba(24, 24, 27, 0.08);
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.a2-panel:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 4px 10px rgba(24, 24, 27, 0.14), 0 22px 44px rgba(24, 24, 27, 0.16);
+}
+@media (prefers-reduced-motion: reduce) {
+  .a2-panel { transition: none; }
+  .a2-panel:hover { transform: none; }
+}
 .a2-icon { color: var(--brass); }
 .a2-monogram {
   width: 42px; height: 42px; border-radius: 50%; flex: none;
@@ -1231,6 +1257,13 @@ body {
  * general 760px non-grid width above (same specificity, so this must come
  * after it in the file to win). */
 .surface-health:has([data-cid="confirm_body"]) { max-width: 440px; }
+
+/* ---------------- My Plans / My Bookings (chat-asked) ----------------
+ * The grid card's photo — full card width, fixed height, same crop
+ * treatment as the My Bookings *page*'s own cards, instead of the
+ * thumbnail-sized landscape crop .a2-img-wrap gives every non-grid list. */
+.surface-records .a2-list-grid .a2-img-wrap,
+.surface-records .a2-list-grid .a2-img-fallback { width: 100%; height: 160px; }
 
 /* ---------------- Finance agent ----------------
  * A compact ledger-style card, never the full chat-bubble width — every

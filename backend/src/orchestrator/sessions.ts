@@ -15,6 +15,12 @@ export interface PlanRecordSummary {
   totalPrice?: number;
   bookingRef?: string;
   travelDate: string | null;
+  /** Same flight/room presence the My Bookings page's own tabs split on
+   * (see MyBookings.tsx) — both true is a full trip, only one true is a
+   * flight- or room-only booking. Used to answer a chat-asked "my room
+   * bookings" / "my flight bookings" with the matching subset. */
+  hasFlight: boolean;
+  hasRoom: boolean;
 }
 
 /** What a chat-asked "my plans/bookings" query should render once the SSE
@@ -22,7 +28,10 @@ export interface PlanRecordSummary {
  * normal ParsedIntent flights/hotels flow. */
 export type PendingMyRecords =
   | { kind: 'signin' }
-  | { kind: 'list'; records: PlanRecordSummary[]; recordType: 'plans' | 'bookings'; filter: 'upcoming' | 'past' | 'all' }
+  | {
+      kind: 'list'; records: PlanRecordSummary[]; recordType: 'plans' | 'bookings'; filter: 'upcoming' | 'past' | 'all';
+      bookingType?: 'trips' | 'flights' | 'rooms';
+    }
   | { kind: 'detail'; record: PlanRecordSummary; trip: TripSummary }
   | { kind: 'not-found'; reference: string };
 
