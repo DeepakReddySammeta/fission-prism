@@ -414,7 +414,12 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
     <>
       <div className="chat-msg-user reveal">{turn.query}</div>
 
-      {intent?.summary ? (
+      {turn.error ? (
+        <div className="chat-msg-ai reveal">
+          <span className="chat-ai-avatar" aria-hidden>V</span>
+          <p className="chat-error">{turn.error}</p>
+        </div>
+      ) : intent?.summary ? (
         <div className="chat-msg-ai reveal">
           <span className="chat-ai-avatar" aria-hidden>F</span>
           <p>{intent.summary}</p>

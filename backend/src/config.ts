@@ -23,3 +23,10 @@ export const JWT_SECRET = process.env.JWT_SECRET || 'voyage-ai-dev-secret-not-fo
 /** Unset by default — the "Continue with Google" button only renders (and
  * /api/auth/google only works) once this is configured. */
 export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+
+/** Rate-limiting configuration for the /api/plan prompt endpoint. */
+export const A2UI_RATE_LIMIT_WINDOW_MS = Number(process.env.A2UI_RATE_LIMIT_WINDOW_MS) || 60000;
+export const A2UI_RATE_LIMIT_MAX_REQUESTS = Number(process.env.A2UI_RATE_LIMIT_MAX_REQUESTS) || 10;
+
+/** Maximum prompt length (characters) accepted by /api/plan. */
+export const A2UI_MAX_PROMPT_LENGTH = Number(process.env.A2UI_MAX_PROMPT_LENGTH) || 5000;

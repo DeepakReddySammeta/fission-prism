@@ -34,6 +34,8 @@ export interface Turn {
   intent: Intent | null;
   loading: boolean;
   store: A2UIStore;
+  /** Populated when the backend rejects the prompt (rate limit, too large, etc.). */
+  error?: string;
 }
 
 /** One "chat" the way ChatGPT/Claude mean it — its own scrollback of turns,
@@ -71,6 +73,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([{ id: firstIdRef.current, turns: [] }]);
   const [activeId, setActiveId] = useState<string>(firstIdRef.current);
   const esMapRef = useRef<Map<string, EventSource>>(new Map());
+  const esCloseTimeoutRef = useRef<Map<string, number>>(new Map());
   // AuthProvider is an ancestor of this provider (see main.tsx), so this is
   // safe to read directly — needed so a chat-typed "my plans"/"my bookings"
   // query can be answered for the right account instead of always looking
@@ -119,6 +122,11 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     });
     const data = await res.json();
 
+    if (!res.ok) {
+      updateTurn(id, { loading: false, error: data.message || 'Something went wrong. Please try again.' });
+      return;
+    }
+
     const { sessionId: sid, intent: parsedIntent } = data;
     updateTurn(id, { sessionId: sid, intent: parsedIntent });
     upsertRecent(conversationId, q, parsedIntent?.destination);
@@ -128,6 +136,23 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     es.addEventListener('a2ui', (e: MessageEvent) => {
       store.apply(JSON.parse(e.data));
       updateTurn(id, { loading: false });
+      // Close the SSE connection after a grace period of inactivity so the
+      // browser's per-domain connection pool (6 slots) doesn't saturate.
+      const existing = esCloseTimeoutRef.current.get(id);
+      if (existing) window.clearTimeout(existing);
+      const t = window.setTimeout(() => {
+        es.close();
+        esMapRef.current.delete(id);
+        esCloseTimeoutRef.current.delete(id);
+      }, 8000);
+      esCloseTimeoutRef.current.set(id, t);
+    });
+    es.addEventListener('error', () => {
+      es.close();
+      esMapRef.current.delete(id);
+      const existing = esCloseTimeoutRef.current.get(id);
+      if (existing) window.clearTimeout(existing);
+      esCloseTimeoutRef.current.delete(id);
     });
   }, [activeId, updateTurn, token]);
 
@@ -163,6 +188,21 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
           es.addEventListener('a2ui', (e: MessageEvent) => {
             store.apply(JSON.parse(e.data));
             updateTurn(t.id, { loading: false });
+            const existing = esCloseTimeoutRef.current.get(t.id);
+            if (existing) window.clearTimeout(existing);
+            const tm = window.setTimeout(() => {
+              es.close();
+              esMapRef.current.delete(t.id);
+              esCloseTimeoutRef.current.delete(t.id);
+            }, 8000);
+            esCloseTimeoutRef.current.set(t.id, tm);
+          });
+          es.addEventListener('error', () => {
+            es.close();
+            esMapRef.current.delete(t.id);
+            const existing = esCloseTimeoutRef.current.get(t.id);
+            if (existing) window.clearTimeout(existing);
+            esCloseTimeoutRef.current.delete(t.id);
           });
         }
         return { id: t.id, sessionId: t.sessionId, query: t.query, intent: t.intent, loading: false, store };
@@ -190,12 +230,11 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [startNewChat]);
 
-  // Every turn keeps its SSE connection open for the life of the app (closing
-  // it would silently break that turn's buttons — the POST would still land,
-  // but the pushed envelope reflecting it would never arrive), regardless of
-  // which conversation is currently the one on screen — only close them all
-  // when the provider itself unmounts (app teardown).
-  useEffect(() => () => { esMapRef.current.forEach((es) => es.close()); }, []);
+  // Close any remaining SSE connections and pending timeouts on unmount.
+  useEffect(() => () => {
+    esMapRef.current.forEach((es) => es.close());
+    esCloseTimeoutRef.current.forEach((t) => window.clearTimeout(t));
+  }, []);
 
   return (
     <PlannerContext.Provider value={{ turns, plan, resetPlanner: startNewChat, openConversation }}>
