@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
-const STORAGE_KEY = 'voyage-ai-token';
+const STORAGE_KEY = 'fission-exp-token';
 
 export interface AuthUser {
   id: string;

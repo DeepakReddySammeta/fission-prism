@@ -8,6 +8,8 @@ import { PlannerProvider } from './planner/PlannerContext';
 import PlansGallery from './pages/PlansGallery';
 import PlanDetail from './pages/PlanDetail';
 import MyBookings from './pages/MyBookings';
+import MyActivity from './pages/MyActivity';
+import MyAppointments from './pages/MyAppointments';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -21,9 +23,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           <Routes>
             <Route element={<AppShell />}>
               <Route path="/" element={<App />} />
+              <Route path="/explore" element={<App />} />
               <Route path="/plans" element={<PlansGallery />} />
               <Route path="/plans/:id" element={<PlanDetail />} />
               <Route path="/bookings" element={<MyBookings />} />
+              <Route path="/appointments" element={<MyAppointments />} />
+              <Route path="/activity" element={<MyActivity />} />
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

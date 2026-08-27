@@ -373,8 +373,8 @@ export function Surface({ store, surface, onAction, className }: { store: A2UISt
   if (!surface.components.has('root')) return null;
   return (
     <Card
-      className={`shadow-md${className ? ` ${className}` : ''}`}
-      style={{ borderTopWidth: 3, borderTopStyle: 'solid', borderTopColor: surface.theme.primaryColor || '#888' }}
+      className={`section-card${className ? ` ${className}` : ''}`}
+      style={{ borderTopWidth: 3, borderTopStyle: 'solid', borderTopColor: (surface.theme.primaryColor === '#3b82f6' ? '#f25011' : surface.theme.primaryColor) || '#888' }}
     >
       <CardContent className="p-6">
         <Node store={store} surface={surface} componentId="root" scope="" onAction={onAction} />

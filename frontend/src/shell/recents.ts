@@ -8,7 +8,7 @@ export interface RecentEntry {
   pinned: boolean;
 }
 
-const KEY = 'voyage-ai-recents';
+const KEY = 'fission-exp-recents';
 const MAX_UNPINNED = 10;
 export const RECENTS_EVENT = 'voyage-recents';
 

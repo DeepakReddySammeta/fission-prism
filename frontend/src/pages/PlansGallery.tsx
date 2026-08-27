@@ -21,6 +21,51 @@ interface PlanSummary {
   travelDate: string | null;
 }
 
+function PlanCard({ plan, onOpen, onDelete }: {
+  plan: PlanSummary; onOpen: (id: string) => void; onDelete: (e: React.MouseEvent, p: PlanSummary) => void;
+}) {
+  return (
+    <div
+      className="plan-card-v2 reveal"
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(plan.id)}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpen(plan.id); }}
+    >
+      <button
+        className="plan-card-delete-v2"
+        onClick={(e) => onDelete(e, plan)}
+        aria-label={`Delete ${plan.title}`}
+        title="Delete plan"
+      >
+        🗑
+      </button>
+      <div className="pc-image-wrap">
+        {plan.imageUrl ? (
+          <div className="pc-image" style={{ backgroundImage: `url(${plan.imageUrl})` }} />
+        ) : (
+          <div className="pc-image-fallback"><span>🗺️</span></div>
+        )}
+      </div>
+      <div className="pc-body">
+        <div className="pc-title-row">
+          <h3 className="pc-title">{plan.title}</h3>
+          <span className="pc-arrow" aria-hidden>→</span>
+        </div>
+        <p className="pc-meta">{plan.destination} · {new Date(plan.createdAt).toLocaleDateString()}</p>
+        <div className="pc-footer">
+          {plan.totalPrice ? (
+            <span className="pc-price">₹{plan.totalPrice.toLocaleString()}</span>
+          ) : (
+            <span />
+          )}
+          <span className="pc-action">View details</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PlansGallery() {
   const { user, token, ready } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -39,8 +84,6 @@ export default function PlansGallery() {
   }, [token, filter]);
 
   const requestDelete = (e: React.MouseEvent, plan: PlanSummary) => {
-    // Sits on top of a card that's otherwise one big <Link> — stop the click
-    // from also navigating into the plan it's about to delete.
     e.preventDefault();
     e.stopPropagation();
     setPendingDelete(plan);
@@ -65,10 +108,18 @@ export default function PlansGallery() {
 
   if (!user) {
     return (
-      <div className="plans-page">
-        <h1 className="a2-h1">My Plans</h1>
-        <div className="empty-state">
-          <p>Sign in to see the trips you've saved.</p>
+      <div className="plans-page plans-page-bg">
+        <div className="plans-header">
+          <div className="plans-header-icon" aria-hidden>🗺️</div>
+          <div className="plans-header-text">
+            <h1 className="a2-h1">My Plans</h1>
+            <div className="plans-header-line" />
+          </div>
+        </div>
+        <div className="empty-state-box">
+          <div className="empty-icon" aria-hidden>🔐</div>
+          <h3>Sign in to continue</h3>
+          <p>Sign in to see the trips you've saved and pick up where you left off.</p>
           <Button onClick={() => setAuthOpen(true)}>Sign in</Button>
         </div>
         <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
@@ -76,53 +127,68 @@ export default function PlansGallery() {
     );
   }
 
+  const categories = [
+    { value: 'all' as DateFilter, label: 'All', count: plans?.length ?? 0 },
+    { value: 'upcoming' as DateFilter, label: 'Upcoming', count: plans?.filter((p) => !p.travelDate || p.travelDate >= new Date().toISOString().slice(0, 10)).length ?? 0 },
+    { value: 'past' as DateFilter, label: 'Past', count: plans?.filter((p) => !!p.travelDate && p.travelDate < new Date().toISOString().slice(0, 10)).length ?? 0 },
+  ];
+
   return (
-    <div className="plans-page">
-      <h1 className="a2-h1">My Plans</h1>
-      <Tabs value={filter} onValueChange={(v) => setSearchParams(v === 'all' ? {} : { filter: v })}>
-        <TabsList>
-          <TabsTrigger value="all">All</TabsTrigger>
-          <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
-          <TabsTrigger value="past">Past</TabsTrigger>
-        </TabsList>
-      </Tabs>
-      {plans === null && <p className="muted">Loading…</p>}
-      {plans?.length === 0 && (
-        <div className="empty-state">
-          <p>
-            {filter === 'all'
-              ? "No saved plans yet — plan a trip and save it here once you've picked a flight or hotel."
-              : `No ${filter} plans.`}
-          </p>
+    <div className="plans-page plans-page-bg">
+      <div className="plans-header">
+        <div className="plans-header-icon" aria-hidden>🗺️</div>
+        <div className="plans-header-text">
+          <h1 className="a2-h1">My Plans</h1>
+          <div className="plans-header-line" />
         </div>
-      )}
-      <div className="plans-grid">
-        {plans?.map((p) => (
-          <div
-            key={p.id}
-            className="plan-card reveal"
-            role="button"
-            tabIndex={0}
-            onClick={() => setOpenPlanId(p.id)}
-            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setOpenPlanId(p.id); }}
-          >
-            <button
-              className="plan-card-delete"
-              onClick={(e) => requestDelete(e, p)}
-              aria-label={`Delete ${p.title}`}
-              title="Delete plan"
-            >
-              🗑
-            </button>
-            <div className="plan-card-img" style={p.imageUrl ? { backgroundImage: `url(${p.imageUrl})` } : undefined} />
-            <div className="plan-card-body">
-              <h3 className="a2-h3">{p.title}</h3>
-              <p className="a2-caption">{p.destination} · {new Date(p.createdAt).toLocaleDateString()}</p>
-              {p.totalPrice ? <p className="a2-h3">₹{p.totalPrice}</p> : null}
-            </div>
-          </div>
-        ))}
       </div>
+
+      <Tabs value={filter} onValueChange={(v) => setSearchParams(v === 'all' ? {} : { filter: v })}>
+        <div className="plans-toolbar-wrap">
+          <div className="plans-tabs">
+            <TabsList>
+              {categories.map((c) => (
+                <TabsTrigger key={c.value} value={c.value}>
+                  {c.label}
+                  <span className="tab-count">{c.count}</span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+        </div>
+
+        <TabsContent value={filter}>
+          <div className="plans-content" key={`plans-${filter}`}>
+            {plans === null && (
+              <div className="empty-state-box">
+                <div className="empty-icon" aria-hidden>⏳</div>
+                <h3>Loading your trips…</h3>
+              </div>
+            )}
+            {plans?.length === 0 && (
+              <div className="empty-state-box">
+                <div className="empty-icon" aria-hidden>📭</div>
+                <h3>No {filter === 'all' ? '' : filter} plans</h3>
+                <p>
+                  {filter === 'all'
+                    ? "No saved plans yet — plan a trip and save it here once you've picked a flight or hotel."
+                    : `No ${filter} plans found.`}
+                </p>
+              </div>
+            )}
+            {plans && plans.length > 0 && (
+              <div className="plans-grid stagger-reveal">
+                {plans.map((p, i) => (
+                  <div key={p.id} style={{ animationDelay: `${i * 60}ms` }}>
+                    <PlanCard plan={p} onOpen={setOpenPlanId} onDelete={requestDelete} />
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+      </Tabs>
+
       <ConfirmDialog
         open={!!pendingDelete}
         title="Delete this plan?"

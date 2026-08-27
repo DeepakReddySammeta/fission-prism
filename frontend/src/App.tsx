@@ -13,13 +13,53 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtDuration, addDays, formatAppointmentDate, CABIN_CLASSES, cabinMultiplier, cabinBaggageKg } from '@/lib/utils';
 import { useVoiceSearch } from '@/lib/useVoiceSearch';
+import {
+  Plane, Hotel, Stethoscope, HeartPulse,
+  Wallet, TrendingUp,
+} from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
 
 const EXAMPLES = [
-  'Plan a trip from Hyderabad to Goa for 3 nights',
-  'Best hotels in Manali',
-  'Flights from Delhi to Bengaluru',
+  { icon: '+', text: 'Find a dentist near me' },
+  { icon: '+', text: 'Suggest me best places to travel in India' },
+  { icon: '+', text: "Let's plan for a trip" },
+];
+
+interface QuickAction {
+  icon: React.ReactNode;
+  label: string;
+  description?: string;
+  query: string;
+}
+
+interface ActionGroup {
+  title: string;
+  items: QuickAction[];
+}
+
+const ACTION_GROUPS: ActionGroup[] = [
+  {
+    title: 'Travel',
+    items: [
+      { icon: <Plane size={18} />, label: 'Find flights', description: 'Search flights by route & date', query: 'Find flights from Delhi to Goa' },
+      { icon: <Hotel size={18} />, label: 'Find hotels', description: 'Browse stays by destination', query: 'Best hotels in Manali' },
+    ],
+  },
+  {
+    title: 'Health',
+    items: [
+      { icon: <Stethoscope size={18} />, label: 'Find a doctor', description: 'Search specialists & clinics', query: 'Find a dentist near me' },
+      { icon: <HeartPulse size={18} />, label: 'My appointments', description: 'Upcoming & past visits', query: 'My upcoming appointments' },
+    ],
+  },
+  {
+    title: 'Finance',
+    items: [
+      { icon: <TrendingUp size={18} />, label: 'Give me my portfolio', description: 'Portfolio overview & tips', query: 'Give me my portfolio' },
+      { icon: <Wallet size={18} />, label: 'Show me my expenses', description: 'See where your money goes', query: 'Show me my expenses' },
+    ],
+  },
 ];
 
 function FlightSkeleton() {
@@ -376,12 +416,12 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
       {intent?.summary ? (
         <div className="chat-msg-ai reveal">
-          <span className="chat-ai-avatar" aria-hidden>V</span>
+          <span className="chat-ai-avatar" aria-hidden>F</span>
           <p>{intent.summary}</p>
         </div>
       ) : loading ? (
         <div className="chat-msg-ai reveal">
-          <span className="chat-ai-avatar" aria-hidden>V</span>
+          <span className="chat-ai-avatar" aria-hidden>F</span>
           <p className="chat-thinking">Thinking…</p>
         </div>
       ) : null}
@@ -677,11 +717,42 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
       {actionMessages.map((msg, i) => (
         <div className="chat-msg-ai reveal" key={i}>
-          <span className="chat-ai-avatar" aria-hidden>V</span>
+          <span className="chat-ai-avatar" aria-hidden>F</span>
           <p>{msg}</p>
         </div>
       ))}
     </>
+  );
+}
+
+function QuickActionsGrid({ onQuery }: { onQuery: (q: string) => void }) {
+  return (
+    <div className="quick-actions-grid reveal">
+      {ACTION_GROUPS.map((group) => (
+        <div className="quick-actions-section" key={group.title}>
+          <div className="quick-actions-section-label">{group.title}</div>
+          <div className="quick-actions-cards">
+            {group.items.map((item, idx) => (
+              <button
+                key={item.label}
+                className="quick-action-card"
+                style={{ animationDelay: `${idx * 60}ms` }}
+                onClick={() => onQuery(item.query)}
+                title={item.query}
+              >
+                <span className="quick-action-icon" aria-hidden>{item.icon}</span>
+                <span className="quick-action-body">
+                  <span className="quick-action-label">{item.label}</span>
+                  {item.description && (
+                    <span className="quick-action-desc">{item.description}</span>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -739,33 +810,37 @@ export default function App() {
           {!showConversation && (
             <div className="chat-brand-hero">
               <div className="brand">
-                <span className="brand-mark">V</span>
+                <span className="brand-mark">F</span>
                 <div>
-                  <h1>Voyage AI</h1>
-                  <p>Ask for a trip. Agents plan it live.</p>
+                  <h1>Fission Experience Platform</h1>
+                  <p className="brand-tagline">Travel, health & finance — all in one place</p>
                 </div>
               </div>
             </div>
           )}
 
+          {!showConversation && <QuickActionsGrid onQuery={plan} />}
+
           <form className="query-form" onSubmit={submit}>
-            <Input
-              className="query-input"
-              placeholder={voice.listening ? 'Listening…' : 'e.g. Plan a trip from Hyderabad to Goa for 3 nights'}
-              value={inputValue}
-              onChange={(e) => setInputValue(e.target.value)}
-            />
-            {voice.supported && (
-              <button
-                type="button"
-                className={`mic-btn${voice.listening ? ' mic-btn-active' : ''}`}
-                onClick={() => (voice.listening ? voice.stop() : voice.start())}
-                aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
-                title={voice.listening ? 'Stop voice search' : 'Search by voice'}
-              >
-                🎤
-              </button>
-            )}
+            <div className="query-input-wrap">
+              <Input
+                className="query-input"
+                placeholder={voice.listening ? 'Listening…' : 'Ask about travel, health, or finance…'}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+              />
+              {voice.supported && (
+                <button
+                  type="button"
+                  className={`mic-btn${voice.listening ? ' mic-btn-active' : ''}`}
+                  onClick={() => (voice.listening ? voice.stop() : voice.start())}
+                  aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
+                  title={voice.listening ? 'Stop voice search' : 'Search by voice'}
+                >
+                  🎤
+                </button>
+              )}
+            </div>
             <Button size="lg" className="h-12" type="submit">
               Plan
             </Button>
@@ -774,24 +849,17 @@ export default function App() {
           <div className="examples">
             {EXAMPLES.map((ex, i) => (
               <button
-                key={ex}
+                key={ex.text}
                 className="example-chip"
                 style={{ animationDelay: `${i * 60}ms` }}
-                onClick={() => plan(ex)}
+                onClick={() => plan(ex.text)}
               >
-                {ex}
+                <span className="example-icon" aria-hidden>{ex.icon}</span>
+                <span>{ex.text}</span>
               </button>
             ))}
           </div>
 
-          {!showConversation && (
-            <div className="hero-flourish" aria-hidden>
-              <svg viewBox="0 0 600 40" preserveAspectRatio="none">
-                <path d="M0,20 C150,0 450,40 600,20" />
-              </svg>
-              <span className="hero-plane">✈</span>
-            </div>
-          )}
         </div>
       </div>
 

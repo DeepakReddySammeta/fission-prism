@@ -23,11 +23,13 @@ interface PlanDetail {
 export function PlanDetailDrawer({ planId, onClose }: { planId: string | null; onClose: () => void }) {
   const { token } = useAuth();
   const [plan, setPlan] = useState<PlanDetail | null>(null);
+  const [closing, setClosing] = useState(false);
 
   useEffect(() => {
     if (!planId || !token) { setPlan(null); return; }
     let cancelled = false;
     setPlan(null);
+    setClosing(false);
     fetch(`${API}/api/plans/${planId}`, { headers: { authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (!cancelled) setPlan(d); });
@@ -36,33 +38,54 @@ export function PlanDetailDrawer({ planId, onClose }: { planId: string | null; o
 
   useEffect(() => {
     if (!planId) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') triggerClose(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [planId, onClose]);
+  }, [planId]);
+
+  const triggerClose = () => {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(onClose, 1350);
+  };
 
   if (!planId) return null;
 
   return (
     <>
-      <div className="drawer-backdrop" onClick={onClose} />
-      <aside className="plan-drawer" role="dialog" aria-modal="true">
-        <button className="drawer-close" onClick={onClose} aria-label="Close">×</button>
-        {!plan ? (
-          <p className="muted" style={{ padding: 24 }}>Loading…</p>
-        ) : (
-          <>
-            {plan.imageUrl && <div className="drawer-hero-img" style={{ backgroundImage: `url(${plan.imageUrl})` }} />}
-            <div className="drawer-body">
-              <h2 className="a2-h1">{plan.title}</h2>
-              <p className="a2-caption">{plan.destination} · Saved {new Date(plan.createdAt).toLocaleDateString()}</p>
-              <div style={{ marginTop: 18 }}>
-                <TripSummaryDisplay trip={plan.trip} hotelDetails={plan.hotelDetails} flightDetails={plan.flightDetails} />
+      <div className={`drawer-backdrop${closing ? ' drawer-backdrop--out' : ''}`} onClick={triggerClose} />
+      <div className="plan-drawer-modal" role="dialog" aria-modal="true" onClick={triggerClose}>
+        <div className={`plan-drawer-content${closing ? ' plan-drawer-content--out' : ''}`} onClick={(e) => e.stopPropagation()}>
+          <button className="drawer-close" onClick={triggerClose} aria-label="Close">×</button>
+          {!plan ? (
+            <div className="drawer-loading">
+              <div className="skel-row" style={{ justifyContent: 'center' }}>
+                <div className="skel-col" style={{ maxWidth: 180, alignItems: 'center', gap: 12 }}>
+                  <div className="skel-line skel-w-140" />
+                  <div className="skel-line skel-w-100" />
+                </div>
               </div>
             </div>
-          </>
-        )}
-      </aside>
+          ) : (
+            <>
+              {plan.imageUrl && (
+                <div className="drawer-hero-wrap">
+                  <div className="drawer-hero-img" style={{ backgroundImage: `url(${plan.imageUrl})` }} />
+                </div>
+              )}
+              <div className="drawer-body">
+                <div className="drawer-header">
+                  <h2 className="drawer-title">{plan.title}</h2>
+                  <p className="drawer-subtitle">{plan.destination} · Saved {new Date(plan.createdAt).toLocaleDateString()}</p>
+                </div>
+                <div className="drawer-summary">
+                  <TripSummaryDisplay trip={plan.trip} hotelDetails={plan.hotelDetails} flightDetails={plan.flightDetails} />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
     </>
   );
 }
