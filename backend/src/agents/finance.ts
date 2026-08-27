@@ -410,13 +410,24 @@ export function detectFinanceQuery(query: string): FinanceQuery | undefined {
     const nameMatch = query.match(
       /(?:\bfor\b|\bto\s+buy\b|\bto\s+get\b|\bto\s+purchase\b)\s+(?:a\s+|an\s+|my\s+)?([a-z0-9][a-z0-9\s]*?)(?:\s+by\s+(.+?))?[.?!]*$/i
     );
-    const name = nameMatch?.[1] ? cleanGoalName(nameMatch[1]) : '';
+    let name = nameMatch?.[1] ? cleanGoalName(nameMatch[1]) : '';
+    // The pattern above expects the amount to come first ("save X for
+    // <name>"). "add a goal to save <name> of X" / "goal to save <name>
+    // worth X" puts the name before the amount instead — catch that
+    // ordering too rather than falling through to contribute_goal, which
+    // would ask "which goal?" about a goal that doesn't exist yet.
+    if (!name) {
+      const ofNameMatch = query.match(
+        /\b(?:save|saving|set aside|keep)\s+(?:a\s+|an\s+|my\s+)?([a-z][a-z\s]*?)\s+(?:of|worth)\s+/i
+      );
+      if (ofNameMatch?.[1]) name = cleanGoalName(ofNameMatch[1]);
+    }
     if (amount !== undefined && name) {
       return {
         kind: 'set_goal',
         name: titleCase(name),
         targetAmount: amount,
-        targetDate: nameMatch![2] ? parseTargetDate(nameMatch![2]) : undefined,
+        targetDate: nameMatch?.[2] ? parseTargetDate(nameMatch[2]) : undefined,
       };
     }
   }

@@ -218,7 +218,11 @@ export function Node({ store, surface, componentId, scope, onAction }: RenderPro
     case 'Column':
       return <div className={`a2-column${comp.panel ? ' a2-panel' : ''}`} data-cid={comp.id} style={rowColStyle(comp)}>{kids(comp.children)}</div>;
     case 'List':
-      return <div className={`a2-list${comp.scroll ? ' a2-list-scroll' : ''}`}>{kids(comp.children)}</div>;
+      return (
+        <div className={`a2-list${comp.scroll ? ' a2-list-scroll' : ''}${comp.layout === 'grid' ? ' a2-list-grid' : ''}`}>
+          {kids(comp.children)}
+        </div>
+      );
     case 'Card':
       return (
         <div className="a2-card">
@@ -227,6 +231,8 @@ export function Node({ store, surface, componentId, scope, onAction }: RenderPro
       );
     case 'Tabs':
       return <TabsNode store={store} surface={surface} comp={comp} scope={scope} onAction={onAction} />;
+    case 'Disclosure':
+      return <DisclosureNode store={store} surface={surface} comp={comp} scope={scope} onAction={onAction} />;
     case 'TextField': {
       const path = resolvePath(comp.path, scope);
       const value = ptrGet(surface.dataModel, path) ?? '';
@@ -356,6 +362,25 @@ function TabsNode({ store, surface, comp, scope, onAction }: { store: A2UIStore;
         </TabsContent>
       ))}
     </Tabs>
+  );
+}
+
+/** A click-to-reveal button — the content behind it (comp.child) is
+ * already fully present in this same envelope, just not rendered until
+ * opened. Local-only state, same pattern as TabsNode's active-tab above:
+ * no server round-trip needed since nothing here depends on data the
+ * server hasn't already sent. Used for goal-plan suggestions that would
+ * otherwise always take up the full card's height. */
+function DisclosureNode({ store, surface, comp, scope, onAction }: { store: A2UIStore; surface: SurfaceState; comp: ComponentDef; scope: string; onAction: (a: ActionPayload) => void }) {
+  const [open, setOpen] = useState(false);
+  const label = typeof comp.label === 'string' ? comp.label : 'Show more';
+  if (open) {
+    return comp.child ? <Node store={store} surface={surface} componentId={comp.child} scope={scope} onAction={onAction} /> : null;
+  }
+  return (
+    <div className="a2-row">
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>{label}</Button>
+    </div>
   );
 }
 

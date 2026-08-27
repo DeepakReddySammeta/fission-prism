@@ -243,8 +243,12 @@ app.get<{ Params: { sessionId: string } }>('/api/events/:sessionId', async (req,
  * 'trip'). */
 function emitMyRecords(sessionId: string, pending: PendingMyRecords) {
   if (pending.kind === 'list') {
-    const label = pending.recordType === 'bookings' ? 'My Bookings' : 'My Plans';
-    emitAll(sessionId, myRecordsSurface('records', label, pending.records));
+    const base = pending.recordType === 'bookings' ? 'My Bookings' : 'My Plans';
+    const suffix = pending.bookingType === 'trips' ? ' — Full Trips'
+      : pending.bookingType === 'flights' ? ' — Flights Only'
+      : pending.bookingType === 'rooms' ? ' — Rooms Only'
+      : '';
+    emitAll(sessionId, myRecordsSurface('records', `${base}${suffix}`, pending.records));
   } else if (pending.kind === 'detail') {
     emitAll(sessionId, recordDetailSurface('recordDetail', pending.record, pending.trip));
   }
@@ -340,7 +344,10 @@ function todayIso(): string {
  * page version of this list — kept separate rather than shared so neither
  * has to bend around the other's response shape (that route never filters
  * by bookingRef; this one does, for a "my bookings" query specifically). */
-function queryUserRecords(userId: string, recordType: 'plans' | 'bookings', filter: 'upcoming' | 'past' | 'all'): PlanRecordSummary[] {
+function queryUserRecords(
+  userId: string, recordType: 'plans' | 'bookings', filter: 'upcoming' | 'past' | 'all',
+  bookingType?: 'trips' | 'flights' | 'rooms',
+): PlanRecordSummary[] {
   const rows = db.prepare(
     'SELECT id, title, destination, image_url, trip_json, created_at FROM plans WHERE user_id = ? ORDER BY created_at DESC'
   ).all(userId) as PlanRow[];
@@ -352,12 +359,18 @@ function queryUserRecords(userId: string, recordType: 'plans' | 'bookings', filt
     return {
       id: r.id, title: r.title, destination: r.destination, imageUrl: r.image_url, createdAt: r.created_at,
       totalPrice: trip.totalPrice, bookingRef: trip.bookingRef, travelDate,
+      hasFlight: Boolean(trip.flight), hasRoom: Boolean(trip.room),
     };
   });
 
   if (recordType === 'bookings') records = records.filter((r) => r.bookingRef);
   if (filter === 'upcoming') records = records.filter((r) => !r.travelDate || r.travelDate >= today);
   if (filter === 'past') records = records.filter((r) => r.travelDate && r.travelDate < today);
+  // Same three-way split as the My Bookings page's own tabs (MyBookings.tsx):
+  // both flight and room booked is a full trip, only one is that type alone.
+  if (bookingType === 'trips') records = records.filter((r) => r.hasFlight && r.hasRoom);
+  if (bookingType === 'flights') records = records.filter((r) => r.hasFlight && !r.hasRoom);
+  if (bookingType === 'rooms') records = records.filter((r) => r.hasRoom && !r.hasFlight);
   return records;
 }
 
@@ -404,6 +417,10 @@ function handleMyRecordsQuery(myRecords: MyRecordsIntent, user: AuthUser | undef
   const session = createSession();
   const label = myRecords.recordType === 'bookings' ? 'bookings' : 'plans';
   const filterLabel = myRecords.filter === 'all' ? '' : `${myRecords.filter} `;
+  const bookingTypeLabel = myRecords.bookingType === 'trips' ? 'full-trip '
+    : myRecords.bookingType === 'flights' ? 'flight-only '
+    : myRecords.bookingType === 'rooms' ? 'room-only '
+    : '';
 
   if (!user) {
     session.pendingMyRecords = { kind: 'signin' };
@@ -416,7 +433,7 @@ function handleMyRecordsQuery(myRecords: MyRecordsIntent, user: AuthUser | undef
     };
   }
 
-  const records = queryUserRecords(user.id, myRecords.recordType, myRecords.filter);
+  const records = queryUserRecords(user.id, myRecords.recordType, myRecords.filter, myRecords.bookingType);
 
   if (myRecords.reference) {
     const match = findRecordByReference(records, myRecords.reference);
@@ -431,24 +448,26 @@ function handleMyRecordsQuery(myRecords: MyRecordsIntent, user: AuthUser | undef
         };
       }
     }
-    session.pendingMyRecords = { kind: 'list', records, recordType: myRecords.recordType, filter: myRecords.filter };
+    session.pendingMyRecords = { kind: 'list', records, recordType: myRecords.recordType, filter: myRecords.filter, bookingType: myRecords.bookingType };
     return {
       sessionId: session.id,
       intent: {
         intent: 'refine', destination: '', agents: [],
         summary: records.length
           ? `I couldn't find a saved ${label.slice(0, -1)} matching "${myRecords.reference}" — here's your full list instead.`
-          : `I couldn't find a saved ${label.slice(0, -1)} matching "${myRecords.reference}", and you don't have any ${filterLabel}${label} saved yet.`,
+          : `I couldn't find a saved ${label.slice(0, -1)} matching "${myRecords.reference}", and you don't have any ${filterLabel}${bookingTypeLabel}${label} saved yet.`,
       },
     };
   }
 
-  session.pendingMyRecords = { kind: 'list', records, recordType: myRecords.recordType, filter: myRecords.filter };
+  session.pendingMyRecords = { kind: 'list', records, recordType: myRecords.recordType, filter: myRecords.filter, bookingType: myRecords.bookingType };
   return {
     sessionId: session.id,
     intent: {
       intent: 'refine', destination: '', agents: [],
-      summary: records.length ? `Here are your ${filterLabel}${label}:` : `You don't have any ${filterLabel}${label} saved yet.`,
+      summary: records.length
+        ? `Here are your ${filterLabel}${bookingTypeLabel}${label}:`
+        : `You don't have any ${filterLabel}${bookingTypeLabel}${label} saved yet.`,
     },
   };
 }

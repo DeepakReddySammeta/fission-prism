@@ -683,12 +683,14 @@ export function myRecordsSurface(surfaceId: string, label: string, records: Plan
           { id: 'root', component: 'Card', child: 'body' },
           { id: 'body', component: 'Column', children: ['head', 'list'] },
           { id: 'head', component: 'Text', variant: 'h2', text: label },
-          { id: 'list', component: 'List', children: { path: '/records', componentId: 'record_row' } },
+          // Same layout:'grid' two-up card pattern the goals widgets use
+          // (see goalsBlock) — matches the My Bookings *page*'s own card
+          // grid instead of the plain stacked rows this used to render as.
+          { id: 'list', component: 'List', layout: 'grid', children: { path: '/records', componentId: 'record_row' } },
 
-          { id: 'record_row', component: 'Row', gap: 16, align: 'stretch', children: ['rec_img', 'rec_body'] },
+          { id: 'record_row', component: 'Column', gap: 8, panel: true, children: ['rec_img', 'rec_top', 'rec_meta', 'rec_bottom'] },
           { id: 'rec_img', component: 'Image', url: { path: 'imageUrl' } },
-          { id: 'rec_body', component: 'Column', weight: 1, gap: 6, children: ['rec_top', 'rec_meta', 'rec_bottom'] },
-          { id: 'rec_top', component: 'Row', align: 'center', gap: 8, children: ['rec_title', 'rec_status'] },
+          { id: 'rec_top', component: 'Row', justify: 'between', align: 'center', gap: 8, children: ['rec_title', 'rec_status'] },
           { id: 'rec_title', component: 'Text', variant: 'h3', text: { path: 'title' } },
           { id: 'rec_status', component: 'Badge', tone: 'success', text: { path: 'statusLabel' } },
           { id: 'rec_meta', component: 'Text', variant: 'caption', text: { path: 'dateLabel' } },
@@ -1329,8 +1331,8 @@ export function savingsGoalsListSurface(surfaceId: string, goals: GoalSummary[])
           { id: 'root', component: 'Card', child: 'body' },
           { id: 'body', component: 'Column', children: ['head', 'list'] },
           { id: 'head', component: 'Text', variant: 'h2', text: 'Savings Goals' },
-          { id: 'list', component: 'List', children: { path: '/goals', componentId: 'goal_row' } },
-          { id: 'goal_row', component: 'Column', gap: 4, children: ['goal_name', 'goal_bar_row', 'goal_meta'] },
+          { id: 'list', component: 'List', layout: 'grid', children: { path: '/goals', componentId: 'goal_row' } },
+          { id: 'goal_row', component: 'Column', gap: 4, panel: true, children: ['goal_name', 'goal_bar_row', 'goal_meta'] },
           { id: 'goal_name', component: 'Text', variant: 'h3', text: { path: 'name' } },
           { id: 'goal_bar_row', component: 'Bar', value: { path: 'pct' }, tone: { path: 'tone' } },
           { id: 'goal_meta', component: 'Text', variant: 'caption', text: { path: 'metaLabel' } },
@@ -1539,7 +1541,7 @@ function goalsBlock(goals: GoalSummary[], title: string): (Block & { rows: Recor
     ids: ['goals_label', 'goals_list'],
     components: [
       { id: 'goals_label', component: 'Text', variant: 'h3', text: title },
-      { id: 'goals_list', component: 'List', children: { path: '/goals', componentId: 'pf_goal_row' } },
+      { id: 'goals_list', component: 'List', layout: 'grid', children: { path: '/goals', componentId: 'pf_goal_row' } },
       { id: 'pf_goal_row', component: 'Column', gap: 4, panel: true, children: ['pf_goal_name', 'pf_goal_bar', 'pf_goal_meta'] },
       { id: 'pf_goal_name', component: 'Text', variant: 'body', text: { path: 'name' } },
       { id: 'pf_goal_bar', component: 'Bar', value: { path: 'pct' }, tone: { path: 'tone' } },
@@ -1599,7 +1601,13 @@ export function portfolioSurface(surfaceId: string, data: PortfolioData): Envelo
     const pair = panels.slice(i, i + 2);
     const rowId = `grid_row_${i}`;
     children.push(rowId);
-    components.push({ id: rowId, component: 'Row', gap: 16, align: 'stretch', grid: true, children: pair.map((p) => p.id) });
+    // Recent Expenses caps its own list height and scrolls past it (see
+    // the surface-finance CSS) — stretching it to match Goals' height
+    // anyway would just pad it with empty space below that cap, defeating
+    // the point of scrolling instead of growing. Every other pairing still
+    // stretches so its two cards read as one even row.
+    const align = pair.some((p) => p.id === 'panel_recent') ? 'start' : 'stretch';
+    components.push({ id: rowId, component: 'Row', gap: 16, align, grid: true, children: pair.map((p) => p.id) });
     for (const p of pair) {
       components.push({ id: p.id, component: 'Column', gap: 10, panel: true, weight: 1, children: p.block.ids });
       components.push(...p.block.components);
@@ -1759,7 +1767,7 @@ export function goalsAnalysisSurface(
   if (goalRows.length) {
     children.push('list');
     components.push(
-      { id: 'list', component: 'List', children: { path: '/goals', componentId: 'ga_row' } },
+      { id: 'list', component: 'List', layout: 'grid', children: { path: '/goals', componentId: 'ga_row' } },
       { id: 'ga_row', component: 'Column', gap: 3, panel: true, children: ['ga_name', 'ga_remaining', 'ga_date', 'ga_required'] },
       { id: 'ga_name', component: 'Text', variant: 'h3', text: { path: 'name' } },
       { id: 'ga_remaining', component: 'Text', variant: 'caption', text: { path: 'remainingLabel' } },
@@ -1783,27 +1791,36 @@ export function goalsAnalysisSurface(
       },
     );
 
-    if (!feasible) {
+    if (!feasible && ((cuts && cuts.length) || (extensions && extensions.length))) {
+      // Both suggestions used to always render inline, stacked one under
+      // the other — a lot of vertical space spent on something the user
+      // hasn't asked to see yet. Gated behind a click (DisclosureNode,
+      // pure client-side reveal — the content is already in this same
+      // envelope) and, once opened, laid out side by side instead of
+      // stacked.
+      children.push('options_disclosure');
+      components.push({ id: 'options_disclosure', component: 'Disclosure', label: 'Show ways to close the gap', child: 'options_grid' });
+
+      const optionCols: string[] = [];
       if (cuts && cuts.length) {
-        children.push('cuts_label', 'cuts_list');
-        const cutRows = cuts.map((c) => ({ line: `Cut ${c.category} by ${inr(c.cutBy)}/month` }));
+        optionCols.push('cuts_panel');
         components.push(
+          { id: 'cuts_panel', component: 'Column', gap: 8, panel: true, weight: 1, children: ['cuts_label', 'cuts_list'] },
           { id: 'cuts_label', component: 'Text', variant: 'h3', text: 'Option 1 — trim expenses' },
           { id: 'cuts_list', component: 'List', children: { path: '/cuts', componentId: 'cut_row' } },
           { id: 'cut_row', component: 'Text', variant: 'body', text: { path: 'line' } },
         );
       }
       if (extensions && extensions.length) {
-        if (cuts && cuts.length) children.push('divider_options');
-        components.push({ id: 'divider_options', component: 'Divider' });
-        children.push('ext_label', 'ext_list');
-        const extRows = extensions.map((e) => ({ line: `${e.name}: push the date to ${formatAppointmentDate(e.newDate)} (${e.newMonths} months)` }));
+        optionCols.push('ext_panel');
         components.push(
+          { id: 'ext_panel', component: 'Column', gap: 8, panel: true, weight: 1, children: ['ext_label', 'ext_list'] },
           { id: 'ext_label', component: 'Text', variant: 'h3', text: 'Option 2 — extend the timeline' },
           { id: 'ext_list', component: 'List', children: { path: '/extensions', componentId: 'ext_row' } },
           { id: 'ext_row', component: 'Text', variant: 'body', text: { path: 'line' } },
         );
       }
+      components.push({ id: 'options_grid', component: 'Row', gap: 16, align: 'stretch', children: optionCols });
     }
   }
 
