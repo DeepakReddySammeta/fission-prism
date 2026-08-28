@@ -17,6 +17,7 @@ import { useVoiceSearch } from '@/lib/useVoiceSearch';
 import {
   Plane, Hotel, Stethoscope, HeartPulse,
   Wallet, TrendingUp, MapPin, Mic,
+  CloudSun,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
@@ -30,13 +31,12 @@ interface QuickAction {
 
 const FEATURED_ACTIONS: QuickAction[] = [
   { icon: <TrendingUp size={18} />, label: 'Give me my portfolio', description: 'Portfolio overview & tips', query: 'Give me my portfolio' },
-  { icon: <MapPin size={18} />, label: "Let's plan for a trip", description: 'Plan your next getaway', query: "Let's plan for a trip" },
+  { icon: <CloudSun size={18} />, label: "Show me weather in Hyderabad", description: 'Current weather & forecast', query: "Show me weather in Hyderabad" },
   { icon: <HeartPulse size={18} />, label: 'My appointments', description: 'Upcoming & past visits', query: 'My upcoming appointments' },
 ];
 
 const EXAMPLES = [
   { icon: '+', text: 'Find a dentist near me' },
-  { icon: '+', text: 'Show me weather in Hyderabad' },
   { icon: '+', text: 'Show my bookings' },
 ];
 
@@ -416,6 +416,10 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // or any other non-booking intent, only once flights/hotels are genuinely
   // being searched for a real destination.
   const wantsBookingWeather = expectedAgents.includes('flights') || expectedAgents.includes('hotels');
+  // A standalone "what's the weather in X" query (see detectWeatherIntent on
+  // the backend) — the same card, just on its own rather than as a side dish
+  // to a flights/hotels search, and with its own heading/empty state.
+  const isWeatherLookup = intent?.intent === 'check_weather';
 
   const selectedFlight = useMemo(() => {
     if (!selectedFlightId || !flightsSurface) return null;
@@ -468,7 +472,9 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
       <main className={`results${canDownload && !wantsCombo ? ' has-rail' : ''}`}>
         <div className="results-main">
-          {intent?.destination && wantsBookingWeather && <WeatherCard destination={intent.destination} />}
+          {intent?.destination && (wantsBookingWeather || isWeatherLookup) && (
+            <WeatherCard destination={intent.destination} standalone={isWeatherLookup} />
+          )}
 
           {componentCount(destinationsSurface) > 0 && (
             <div className="reveal">

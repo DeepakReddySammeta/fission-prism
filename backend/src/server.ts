@@ -9,6 +9,7 @@ import type { ActionPayload, FlightOption, HotelOption, ParsedIntent, RoomOption
 import { PORT, LLM_ENABLED, LLM_PROVIDER, LLM_MODEL, GOOGLE_CLIENT_ID, CORS_ORIGINS } from './config';
 import {
   parseIntent, detectMyRecordsIntent, detectExplorationIntent, detectAppointmentsQuery,
+  detectWeatherIntent,
   type MyRecordsIntent, type AppointmentsQuery,
 } from './agents/intent';
 import { getFlightOptions } from './agents/flights';
@@ -110,6 +111,27 @@ app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth },
   // profile instead of the actual booked appointment.
   const appointmentsQuery = detectAppointmentsQuery(query);
   if (appointmentsQuery) return handleAppointmentsQuery(appointmentsQuery, req.user);
+
+  // "What's the weather in Hyderabad" / "show me weather in Goa" / "Delhi
+  // weather" — a live third-party reading, not a flights/hotels search.
+  // Checked before parseIntent (same reasoning as the detectors above): a
+  // bare weather question names no origin/destination the trip prompt
+  // understands, so without this it falls through to "which city did you
+  // mean?". No agents and no pending work — the client's WeatherCard fetches
+  // /api/weather?place=... on its own, exactly as the trip-planning weather
+  // cross-sell already does.
+  const weatherQuery = detectWeatherIntent(query);
+  if (weatherQuery) {
+    const session = createSession();
+    session.trip.destination = weatherQuery.place;
+    return {
+      sessionId: session.id,
+      intent: {
+        intent: 'check_weather', destination: weatherQuery.place, agents: [],
+        summary: `Here's the current weather in ${weatherQuery.place}.`,
+      },
+    };
+  }
 
   // "Best places to visit in X" / "where should I go" — inspiration, not a
   // flights/hotels search. Checked before parseIntent for the same reason

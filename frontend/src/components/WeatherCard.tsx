@@ -6,8 +6,11 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
 /** Live third-party data, not a governed record (see backend/src/weather/
  * weather.ts) — this card is deliberately styled apart from the flights/
  * hotels surfaces (dashed border, a "Live" badge) so it never reads as one
- * more approved result sitting in that list. A fetch failure is silent: a
- * demo forecast going down shouldn't take the rest of the trip plan with it. */
+ * more approved result sitting in that list. As a trip-plan side dish a fetch
+ * failure is silent — a demo forecast going down shouldn't take the rest of
+ * the plan with it — but when the weather *is* the whole answer the user
+ * asked for (`standalone`), a failure says so rather than rendering nothing
+ * under the summary line. */
 
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -60,7 +63,7 @@ function dayLabel(iso: string, index: number): string {
   return d.toLocaleDateString(undefined, { weekday: 'short' });
 }
 
-export function WeatherCard({ destination }: { destination?: string }) {
+export function WeatherCard({ destination, standalone = false }: { destination?: string; standalone?: boolean }) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [data, setData] = useState<WeatherReading | null>(null);
 
@@ -79,7 +82,18 @@ export function WeatherCard({ destination }: { destination?: string }) {
   const active = status === 'ready';
   const temp = useCountUp(data ? Math.round(data.temperatureC) : 0, active);
 
-  if (status === 'idle' || status === 'error') return null;
+  if (status === 'idle') return null;
+  if (status === 'error') {
+    if (!standalone) return null;
+    return (
+      <div className="weather-card reveal">
+        <div className="weather-card-heading">Weather for {destination}</div>
+        <div className="weather-card-condition">
+          I couldn't pull a live reading for {destination} right now — double-check the place name, or try again in a moment.
+        </div>
+      </div>
+    );
+  }
 
   if (status === 'loading') {
     return (
@@ -98,7 +112,11 @@ export function WeatherCard({ destination }: { destination?: string }) {
 
   return (
     <div className="weather-card reveal">
-      <div className="weather-card-heading">Since you're planning a trip to {destination}, here's the weather report</div>
+      <div className="weather-card-heading">
+        {standalone
+          ? `Current weather in ${destination}`
+          : `Since you're planning a trip to ${destination}, here's the weather report`}
+      </div>
       <div className="weather-card-main">
         <span className={`wx-icon ${visual.anim}`} aria-hidden>{visual.icon}</span>
         <div className="weather-card-info">

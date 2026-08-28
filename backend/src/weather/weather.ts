@@ -174,7 +174,13 @@ export async function loadWeather(query: string): Promise<WeatherReading | undef
   const dates = (daily.time ?? []) as string[];
 
   return {
-    place: [place.name, place.admin, place.country].filter(Boolean).join(', '),
+    // Dedupe repeated parts — for a place that is its own admin region
+    // (Goa, Kerala) name and admin are identical and would render "Goa, Goa,
+    // India" without this.
+    place: [place.name, place.admin, place.country]
+      .filter(Boolean)
+      .filter((part, i, parts) => parts.findIndex((p) => p!.toLowerCase() === part!.toLowerCase()) === i)
+      .join(', '),
     temperatureC: Number(current.temperature_2m),
     feelsLikeC: Number(current.apparent_temperature),
     humidityPercent: Number(current.relative_humidity_2m),

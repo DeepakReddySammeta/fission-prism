@@ -81,7 +81,7 @@ export const CATALOG_FUNCTIONS = [
 
 /* ---------------- Domain types (trip planning) ---------------- */
 
-export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations' | 'find_doctor';
+export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations' | 'find_doctor' | 'check_weather';
 
 export interface ParsedIntent {
   intent: IntentKind;
