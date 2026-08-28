@@ -15,6 +15,16 @@ import InlineBookings from './components/activity/InlineBookings';
 import InlineAppointments from './components/activity/InlineAppointments';
 import './styles.css';
 
+// A production build with no VITE_API_URL silently points every request at
+// localhost:8787 — surface that loudly instead of a page that just fails.
+if (import.meta.env.PROD && !import.meta.env.VITE_API_URL) {
+  // eslint-disable-next-line no-console
+  console.error(
+    '[config] VITE_API_URL was not set at build time — API calls will target '
+    + 'http://localhost:8787 and fail. Rebuild with VITE_API_URL=<backend URL>.',
+  );
+}
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthProvider>

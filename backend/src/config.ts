@@ -27,6 +27,10 @@ export const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || '';
 export const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || '';
 export const AWS_SESSION_TOKEN = process.env.AWS_SESSION_TOKEN || '';
 export const AWS_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
+/** Set true when the backend runs on AWS with an instance / ECS-task IAM role
+ * instead of static keys: the Bedrock SDK then uses the ambient AWS credential
+ * chain and no AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY need to be provided. */
+export const AWS_USE_IAM_ROLE = /^(1|true|yes)$/i.test(process.env.AWS_USE_IAM_ROLE || '');
 /** A Bedrock inference-profile / model id. Claude Haiku 4.5 is the default:
  * on this app's structured-JSON prompts it runs ~2-4x faster than Sonnet at
  * comparable quality, which keeps the "Thinking…" wait short. Override with
@@ -39,7 +43,7 @@ export const BEDROCK_MODEL =
  * setup regardless of which provider is selected. */
 export const LLM_ENABLED =
   LLM_PROVIDER === 'bedrock'
-    ? Boolean(AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY)
+    ? AWS_USE_IAM_ROLE || Boolean(AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY)
     : Boolean(GROQ_API_KEY);
 
 /** Human-readable name of the active model, for logs and /api/health. */
@@ -73,3 +77,12 @@ if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) 
 /** Unset by default — the "Continue with Google" button only renders (and
  * /api/auth/google only works) once this is configured. */
 export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+
+/** Allowed browser origin(s) for CORS, comma-separated
+ * (e.g. "https://app.example.com,https://www.example.com"). Unset — the
+ * default — reflects any origin, which is fine for local dev; set it to the
+ * deployed frontend URL(s) in production. */
+export const CORS_ORIGINS = (process.env.CORS_ORIGIN || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);

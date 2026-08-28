@@ -20,16 +20,24 @@ function unfence(text: string): string {
  * params with a 400.
  */
 export function createBedrockBackend(model: string): CompleteFn {
-  const client = new AnthropicBedrock({
-    awsAccessKey: AWS_ACCESS_KEY_ID,
-    awsSecretKey: AWS_SECRET_ACCESS_KEY,
-    awsSessionToken: AWS_SESSION_TOKEN || null,
-    awsRegion: AWS_REGION,
-    // No retries: every caller already falls back to mock data on failure,
-    // so a retry just multiplies the wall-clock time before that fallback
-    // kicks in (a 15s timeout became ~46s with the SDK's default 2 retries).
-    maxRetries: 0,
-  });
+  // No retries: every caller already falls back to mock data on failure, so a
+  // retry just multiplies the wall-clock time before that fallback kicks in
+  // (a 15s timeout became ~46s with the SDK's default 2 retries).
+  //
+  // Static keys are passed only when both are set. Otherwise the SDK falls
+  // back to the ambient AWS credential chain — an EC2 instance role, an ECS
+  // task role, SSO, or ~/.aws — which is how this runs on AWS
+  // (AWS_USE_IAM_ROLE=true) with no long-lived keys in the environment.
+  const client =
+    AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY
+      ? new AnthropicBedrock({
+          awsRegion: AWS_REGION,
+          awsAccessKey: AWS_ACCESS_KEY_ID,
+          awsSecretKey: AWS_SECRET_ACCESS_KEY,
+          awsSessionToken: AWS_SESSION_TOKEN || null,
+          maxRetries: 0,
+        })
+      : new AnthropicBedrock({ awsRegion: AWS_REGION, maxRetries: 0 });
 
   return async function complete(instructions, userContent, timeoutMs) {
     const message = await client.messages.create(

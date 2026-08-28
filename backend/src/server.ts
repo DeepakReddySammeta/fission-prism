@@ -6,7 +6,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { OAuth2Client } from 'google-auth-library';
 import type { ActionPayload, FlightOption, HotelOption, ParsedIntent, RoomOption, TripSummary } from './types';
-import { PORT, LLM_ENABLED, LLM_PROVIDER, LLM_MODEL, GOOGLE_CLIENT_ID } from './config';
+import { PORT, LLM_ENABLED, LLM_PROVIDER, LLM_MODEL, GOOGLE_CLIENT_ID, CORS_ORIGINS } from './config';
 import {
   parseIntent, detectMyRecordsIntent, detectExplorationIntent, detectAppointmentsQuery,
   type MyRecordsIntent, type AppointmentsQuery,
@@ -42,7 +42,18 @@ import { loadWeather } from './weather/weather';
 
 const app = Fastify({ logger: false });
 
-app.register(cors, { origin: true });
+// CORS_ORIGIN unset (local dev) → reflect any origin. Set to the deployed
+// frontend URL(s) in production and only those are allowed.
+app.register(cors, { origin: CORS_ORIGINS.length ? CORS_ORIGINS : true });
+
+/** The value to send as Access-Control-Allow-Origin on the raw SSE response
+ * (which bypasses the @fastify/cors plugin). Mirrors the rule above: '*' when
+ * no allowlist is configured, otherwise the caller's origin iff it's allowed
+ * (and undefined — header omitted, browser blocks — if it isn't). */
+function sseAllowOrigin(reqOrigin?: string): string | undefined {
+  if (!CORS_ORIGINS.length) return '*';
+  return reqOrigin && CORS_ORIGINS.includes(reqOrigin) ? reqOrigin : undefined;
+}
 
 app.get('/api/health', async () => ({
   ok: true,
@@ -242,11 +253,14 @@ app.get<{ Params: { sessionId: string } }>('/api/events/:sessionId', async (req,
   const session = getSession(sessionId);
   if (!session) return reply.code(404).send({ error: 'unknown session' });
 
+  const allowOrigin = sseAllowOrigin(req.headers.origin);
   reply.raw.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache',
     Connection: 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
+    // Reverse proxies must not buffer this response or the stream stalls.
+    'X-Accel-Buffering': 'no',
+    ...(allowOrigin ? { 'Access-Control-Allow-Origin': allowOrigin, Vary: 'Origin' } : {}),
   });
   reply.raw.write(': connected\n\n');
   subscribe(sessionId, reply);
