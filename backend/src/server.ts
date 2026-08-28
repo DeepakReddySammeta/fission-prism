@@ -39,6 +39,7 @@ import {
 } from './db';
 import { newId, hashPassword, verifyPassword, signToken, toAuthUser, requireAuth, optionalAuth, type AuthUser } from './auth/auth';
 import { loadWeather } from './weather/weather';
+import { rateLimitPreHandler, promptSizePreHandler } from './middleware/protections';
 
 const app = Fastify({ logger: false });
 
@@ -68,7 +69,7 @@ app.get<{ Querystring: { place?: string } }>('/api/weather', async (req, reply) 
 /** Step 1: parse intent, create a session, store what needs generating.
  *  Generation itself only starts once the client subscribes to /api/events
  *  (see below) so we never race an agent finishing before anyone's listening. */
-app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth }, async (req, reply) => {
+app.post<{ Body: { query: string } }>('/api/plan', { preHandler: [optionalAuth, rateLimitPreHandler, promptSizePreHandler] }, async (req, reply) => {
   const { query } = req.body;
   if (!query?.trim()) return reply.code(400).send({ error: 'query is required' });
 

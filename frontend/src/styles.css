@@ -173,6 +173,7 @@ body {
   box-shadow: var(--shadow-sm);
 }
 .chat-thinking { font-style: italic; color: var(--muted); }
+.chat-error { color: var(--coral); font-weight: 500; }
 
 .chat-composer { flex: none; border-top: 1px solid var(--rule); padding: 18px 24px 22px; }
 .chat-page-empty .chat-composer { border-top: none; }
