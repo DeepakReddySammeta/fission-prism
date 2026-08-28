@@ -501,6 +501,56 @@ export function detectExplorationIntent(query: string): ExplorationIntent | unde
   return { region, season, durationNights };
 }
 
+export interface WeatherIntent {
+  place: string;
+}
+
+/** Trailing time words that follow a place in a weather question ("weather in
+ * Goa right now", "Delhi weather tomorrow") — stripped so they don't end up
+ * inside the place name handed to the geocoder. */
+const WEATHER_TAIL = /\s+(?:right now|now|today|tonight|tomorrow|this (?:week|weekend)|currently|please)\b.*$/i;
+
+/** Chat-box "what's the weather in X" / "show me weather in Goa" / "Hyderabad
+ * weather" — a live third-party lookup, not a flights/hotels search, so it's
+ * checked before parseIntent/the LLM the same way detectExplorationIntent is.
+ * Without it, a bare weather question names no origin/destination pair the
+ * trip prompt recognises and falls through to the "which city did you mean?"
+ * clarification. Returns undefined when no place is named (so "what's the
+ * weather?" still falls through to that clarification). */
+export function detectWeatherIntent(query: string): WeatherIntent | undefined {
+  const q = query.trim();
+  if (!/\b(?:weather|forecast|temperature|how (?:hot|cold|warm))\b/i.test(q)) return undefined;
+
+  // "weather in/at/for/like in <place>" — place follows the keyword.
+  let m = q.match(
+    /\b(?:weather|forecast|temperature)\s+(?:report\s+|conditions?\s+|like\s+)?(?:in|at|for|of|around|near)\s+(.+)$/i,
+  );
+  // "how hot is it in <place>" — same, keyed off the temperature question.
+  if (!m) m = q.match(/\bhow (?:hot|cold|warm)\b.*?\b(?:in|at)\s+(.+)$/i);
+  // "<place> weather" with an explicit preposition ("in Goa weather").
+  if (!m) m = q.match(/\b(?:in|at|for)\s+(.+?)\s+(?:weather|forecast|temperature)\b/i);
+  // Bare leading "<place> weather" — only trusted when it's a short, plain
+  // place name, so "what's the weather" / "how's the weather" don't get
+  // "what's the" / "how's the" read as a place.
+  if (!m) {
+    const lead = q.match(/^(.+?)\s+(?:weather|forecast|temperature)\b/i);
+    if (
+      lead &&
+      /^[a-z][a-z .'-]*$/i.test(lead[1]) &&
+      lead[1].trim().split(/\s+/).length <= 3 &&
+      !/\b(?:what|whats|how|hows|the|is|it|todays?|current|live|this|my)\b/i.test(lead[1])
+    ) {
+      m = lead;
+    }
+  }
+  if (!m) return undefined;
+
+  const raw = m[1].replace(WEATHER_TAIL, '').replace(/[?.!,]+\s*$/, '').trim();
+  const place = cleanPlace(raw);
+  if (!place) return undefined;
+  return { place: titleCase(place) };
+}
+
 /** Best-effort guess at "which hotel might this be naming" when the message
  * has no destination phrase at all — strips common request filler ("give me",
  * "tell me about"...) and leaves whatever's left for the server to try

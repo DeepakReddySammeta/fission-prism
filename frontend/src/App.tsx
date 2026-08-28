@@ -416,6 +416,10 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // or any other non-booking intent, only once flights/hotels are genuinely
   // being searched for a real destination.
   const wantsBookingWeather = expectedAgents.includes('flights') || expectedAgents.includes('hotels');
+  // A standalone "what's the weather in X" query (see detectWeatherIntent on
+  // the backend) — the same card, just on its own rather than as a side dish
+  // to a flights/hotels search, and with its own heading/empty state.
+  const isWeatherLookup = intent?.intent === 'check_weather';
 
   const selectedFlight = useMemo(() => {
     if (!selectedFlightId || !flightsSurface) return null;
@@ -468,7 +472,9 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
       <main className={`results${canDownload && !wantsCombo ? ' has-rail' : ''}`}>
         <div className="results-main">
-          {intent?.destination && wantsBookingWeather && <WeatherCard destination={intent.destination} />}
+          {intent?.destination && (wantsBookingWeather || isWeatherLookup) && (
+            <WeatherCard destination={intent.destination} standalone={isWeatherLookup} />
+          )}
 
           {componentCount(destinationsSurface) > 0 && (
             <div className="reveal">
