@@ -9,7 +9,7 @@ export interface RecentEntry {
 }
 
 const KEY = 'fission-exp-recents';
-const MAX_UNPINNED = 10;
+const MAX_UNPINNED = 30;
 export const RECENTS_EVENT = 'voyage-recents';
 
 function notify() {

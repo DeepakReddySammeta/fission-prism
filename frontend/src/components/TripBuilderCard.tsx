@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Surface } from '../a2ui/catalog';
-import type { ActionPayload } from '../types';
-import type { A2UIStore, SurfaceState } from '../a2ui/store';
+import type { SurfaceModel } from '@a2ui/web_core/v0_9';
+import { Surface } from '../a2ui/Surface';
 import { Button } from '@/components/ui/button';
 import { fmtDuration } from '@/lib/utils';
 import { Stepper } from './Stepper';
@@ -22,8 +21,6 @@ function SaveForLaterLink({ saveTrip, saveState }: { saveTrip: () => void; saveS
 
 interface Props {
   sessionId: string;
-  store: A2UIStore;
-  onAction: (a: ActionPayload) => void;
   pushMessage: (text: string) => void;
   onBrowseAll: () => void;
   flightRow: any;
@@ -31,7 +28,7 @@ interface Props {
   roomRow: any;
   intentAdults?: number;
   intentChildren?: number;
-  tripSurface: SurfaceState | undefined;
+  tripSurface: SurfaceModel<any> | undefined;
   canDownload: boolean;
   saveTrip: () => void;
   downloadPdf: () => void;
@@ -46,7 +43,7 @@ interface Props {
  * Save/Download alongside it. Replaces the old split between a "confirmed"
  * card and a separate sidebar that then asked to confirm again. */
 export function TripBuilderCard({
-  sessionId, store, onAction, pushMessage, onBrowseAll,
+  sessionId, pushMessage, onBrowseAll,
   flightRow, roomsData, roomRow, intentAdults, intentChildren,
   tripSurface, canDownload, saveTrip, downloadPdf, saveState, pdfBusy,
 }: Props) {
@@ -72,7 +69,7 @@ export function TripBuilderCard({
   if (canDownload && tripSurface) {
     return (
       <div className="flight-detail-card trip-reco-card reveal">
-        <Surface store={store} surface={tripSurface} onAction={onAction} className="surface-trip" />
+        <Surface surface={tripSurface} className="surface-trip" />
         <div className="trip-builder-actions">
           <Button onClick={saveTrip} disabled={saveState === 'saving'}>
             {saveState === 'saved' ? 'Saved ✓' : saveState === 'saving' ? 'Saving…' : 'Save to My Plans'}

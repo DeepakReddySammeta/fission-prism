@@ -201,6 +201,14 @@ export interface Session {
   /** Date/time already named in a booking-flavored request ("tomorrow
    * morning"), so the booking form arrives pre-filled instead of blank. */
   pendingDoctorHints?: { preferredDate?: string; preferredTime?: string };
+  /** What's actually been put on the wire for this session, so re-emitting a
+   * surface only sends what changed — `createSurface` exactly once per
+   * surface, and `updateComponents` only for components whose JSON differs
+   * from the last one sent. See reduceForWire below. */
+  wire: {
+    created: Set<string>;
+    components: Map<string, Map<string, string>>;
+  };
 }
 
 const sessions = new Map<string, Session>();
@@ -210,6 +218,7 @@ export function createSession(): Session {
   const session: Session = {
     id, trip: { destination: '' }, subscribers: new Set(),
     hotelsCache: new Map(), flightsCache: new Map(), doctorsCache: new Map(),
+    wire: { created: new Set(), components: new Map() },
   };
   sessions.set(id, session);
   return session;
@@ -230,6 +239,47 @@ export function unsubscribe(id: string, reply: FastifyReply) {
   s?.subscribers.delete(reply);
 }
 
+/**
+ * Trims a freshly-built envelope down to what the client hasn't already seen,
+ * so an action that rebuilds a whole surface still only puts the delta on the
+ * wire:
+ *   - `createSurface` is dropped if this surface already exists on the client
+ *   - `updateComponents` keeps only components whose JSON changed since last
+ *     sent (an unchanged re-send becomes nothing)
+ *   - `updateDataModel` always flows (it's the data half of the split)
+ *   - `deleteSurface` flows and resets this surface's wire memory
+ * Returns null when there's nothing new to send.
+ */
+function reduceForWire(s: Session, e: Envelope): Envelope | null {
+  if ('createSurface' in e) {
+    const sid = e.createSurface.surfaceId;
+    if (s.wire.created.has(sid)) return null;
+    s.wire.created.add(sid);
+    s.wire.components.set(sid, new Map());
+    return e;
+  }
+  if ('deleteSurface' in e) {
+    const sid = e.deleteSurface.surfaceId;
+    s.wire.created.delete(sid);
+    s.wire.components.delete(sid);
+    return e;
+  }
+  if ('updateComponents' in e) {
+    const { surfaceId, components } = e.updateComponents;
+    let sent = s.wire.components.get(surfaceId);
+    if (!sent) { sent = new Map(); s.wire.components.set(surfaceId, sent); }
+    const changed = components.filter((c) => {
+      const json = JSON.stringify(c);
+      if (sent!.get(c.id) === json) return false;
+      sent!.set(c.id, json);
+      return true;
+    });
+    if (changed.length === 0) return null;
+    return { ...e, updateComponents: { surfaceId, components: changed } };
+  }
+  return e;
+}
+
 /** Validates, then broadcasts an envelope to every SSE client on this session. */
 export function emit(id: string, envelope: Envelope) {
   const s = sessions.get(id);
@@ -239,7 +289,9 @@ export function emit(id: string, envelope: Envelope) {
     console.warn(`[trust] dropped envelope on session ${id}: ${check.reason}`);
     return;
   }
-  const frame = `event: a2ui\ndata: ${JSON.stringify(envelope)}\n\n`;
+  const reduced = reduceForWire(s, envelope);
+  if (!reduced) return;
+  const frame = `event: a2ui\ndata: ${JSON.stringify(reduced)}\n\n`;
   for (const res of s.subscribers) {
     try { res.raw.write(frame); } catch { s.subscribers.delete(res); }
   }

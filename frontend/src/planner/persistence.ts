@@ -1,22 +1,17 @@
-import { A2UIStore } from '../a2ui/store';
-import type { ComponentDef } from '../types';
+import { A2uiRuntime, type A2uiMessage } from '../a2ui/runtime';
 
 const KEY = 'fission-exp-conversations';
 const MAX_CONVERSATIONS = 30;
-
-interface SerializedSurface {
-  id: string;
-  theme: any;
-  dataModel: any;
-  components: [string, ComponentDef][];
-}
 
 export interface SerializedTurn {
   id: string;
   sessionId: string | null;
   query: string;
   intent: any;
-  surfaces: SerializedSurface[];
+  /** The raw A2UI envelope stream for this turn — replayed into a fresh
+   * A2uiRuntime on restore, so a Recent reopened after a refresh shows
+   * exactly what was rendered (not a fresh, possibly-different re-answer). */
+  messages: A2uiMessage[];
 }
 
 interface SerializedConversation {
@@ -41,28 +36,14 @@ function writeAll(all: Record<string, SerializedConversation>) {
   }
 }
 
-function serializeStore(store: A2UIStore): SerializedSurface[] {
-  return Array.from(store.surfaces.entries()).map(([id, s]) => ({
-    id, theme: s.theme, dataModel: s.dataModel, components: Array.from(s.components.entries()),
-  }));
-}
-
-export function hydrateStore(surfaces: SerializedSurface[]): A2UIStore {
-  const store = new A2UIStore();
-  for (const s of surfaces) {
-    store.surfaces.set(s.id, { id: s.id, theme: s.theme, dataModel: s.dataModel, components: new Map(s.components) });
-  }
-  return store;
-}
-
 /** Persists one conversation's full visible state — every turn's query,
- * intent, and rendered A2UI content — so a Recent clicked after a page
- * refresh restores exactly what was there. Not a live re-answer: asking the
- * same question again could easily come back with different flights,
+ * intent, and rendered A2UI envelope stream — so a Recent clicked after a
+ * page refresh restores exactly what was there. Not a live re-answer: asking
+ * the same question again could easily come back with different flights,
  * hotels, or prices than what the traveler actually saw and picked from. */
 export function saveConversation(
   id: string,
-  turns: { id: string; sessionId: string | null; query: string; intent: any; store: A2UIStore }[]
+  turns: { id: string; sessionId: string | null; query: string; intent: any; runtime: A2uiRuntime }[]
 ) {
   if (turns.length === 0) return;
   const all = readAll();
@@ -70,7 +51,7 @@ export function saveConversation(
     id,
     turns: turns.map((t) => ({
       id: t.id, sessionId: t.sessionId, query: t.query, intent: t.intent,
-      surfaces: serializeStore(t.store),
+      messages: t.runtime.messages,
     })),
   };
   // Evict oldest-saved entries past the cap — insertion order in a plain

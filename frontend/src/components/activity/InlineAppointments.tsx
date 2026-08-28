@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
-import { AuthDialog } from '../auth/AuthDialog';
+import { useAuth } from '../../auth/AuthContext';
+import { AuthDialog } from '../../auth/AuthDialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -51,11 +50,9 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
 }
 
-export default function MyAppointments() {
+export default function InlineAppointments() {
   const { user, token, ready } = useAuth();
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const dateFilter: DateFilter = (searchParams.get('filter') as DateFilter) || 'all';
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [appointments, setAppointments] = useState<Appointment[] | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
 
@@ -74,20 +71,11 @@ export default function MyAppointments() {
 
   if (!user) {
     return (
-      <div className="plans-page bookings-page-bg">
-        <div className="bookings-header">
-          <div className="bookings-header-icon" aria-hidden>📅</div>
-          <div className="bookings-header-text">
-            <h1 className="a2-h1">My Appointments</h1>
-            <div className="bookings-header-line" />
-          </div>
-        </div>
-        <div className="empty-state-box">
-          <div className="empty-icon" aria-hidden>🔐</div>
-          <h3>Sign in to continue</h3>
-          <p>Sign in to see your upcoming and past appointments.</p>
-          <Button onClick={() => setAuthOpen(true)}>Sign in</Button>
-        </div>
+      <div className="empty-state-box">
+        <div className="empty-icon" aria-hidden>🔐</div>
+        <h3>Sign in to continue</h3>
+        <p>Sign in to see your upcoming and past appointments.</p>
+        <Button onClick={() => setAuthOpen(true)}>Sign in</Button>
         <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
       </div>
     );
@@ -95,51 +83,25 @@ export default function MyAppointments() {
 
   if (appointments === null) {
     return (
-      <div className="plans-page bookings-page-bg">
-        <div className="bookings-header">
-          <div className="bookings-header-icon" aria-hidden>📅</div>
-          <div className="bookings-header-text">
-            <h1 className="a2-h1">My Appointments</h1>
-            <div className="bookings-header-line" />
-          </div>
-        </div>
-        <div className="empty-state-box">
-          <div className="empty-icon" aria-hidden>⏳</div>
-          <h3>Loading your appointments…</h3>
-        </div>
+      <div className="empty-state-box">
+        <div className="empty-icon" aria-hidden>⏳</div>
+        <h3>Loading your appointments…</h3>
       </div>
     );
   }
 
   if (appointments.length === 0) {
     return (
-      <div className="plans-page bookings-page-bg">
-        <div className="bookings-header">
-          <div className="bookings-header-icon" aria-hidden>📅</div>
-          <div className="bookings-header-text">
-            <h1 className="a2-h1">My Appointments</h1>
-            <div className="bookings-header-line" />
-          </div>
-        </div>
-        <div className="empty-state-box">
-          <div className="empty-icon" aria-hidden>🩺</div>
-          <h3>No appointments yet</h3>
-          <p>Book a doctor appointment to see it here.</p>
-        </div>
+      <div className="empty-state-box">
+        <div className="empty-icon" aria-hidden>🩺</div>
+        <h3>No appointments yet</h3>
+        <p>Book a doctor appointment to see it here.</p>
       </div>
     );
   }
 
   return (
-    <div className="plans-page bookings-page-bg">
-      <div className="bookings-header">
-        <div className="bookings-header-icon" aria-hidden>📅</div>
-        <div className="bookings-header-text">
-          <h1 className="a2-h1">My Appointments</h1>
-          <div className="bookings-header-line" />
-        </div>
-      </div>
-
+    <div className="inline-activity-section">
       <Tabs defaultValue="list">
         <div className="bookings-toolbar-wrap">
           <div className="bookings-tabs">
@@ -150,14 +112,7 @@ export default function MyAppointments() {
               </TabsTrigger>
             </TabsList>
           </div>
-          <Select
-            value={dateFilter}
-            onValueChange={(v) => setSearchParams((prev) => {
-              const next = new URLSearchParams(prev);
-              if (v === 'all') next.delete('filter'); else next.set('filter', v);
-              return next;
-            })}
-          >
+          <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilter)}>
             <SelectTrigger className="bookings-select-trigger w-[150px]"><SelectValue /></SelectTrigger>
             <SelectContent className="bookings-select-content">
               <SelectItem value="all">All</SelectItem>

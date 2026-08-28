@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AuthDialog } from '../auth/AuthDialog';
 import { Button } from '@/components/ui/button';
@@ -14,7 +14,7 @@ interface FeatureCard {
   icon: string;
   title: string;
   description: string;
-  link?: string;
+  link: string;
   countKey?: 'plans' | 'bookings';
 }
 
@@ -25,7 +25,7 @@ const FEATURES: FeatureCard[] = [
     icon: '🗺️',
     title: 'My Plans',
     description: 'Saved trip plans and itineraries',
-    link: '/plans',
+    link: '/activity/plans',
     countKey: 'plans',
   },
   {
@@ -34,7 +34,7 @@ const FEATURES: FeatureCard[] = [
     icon: '🎫',
     title: 'My Bookings',
     description: 'Confirmed flights and stays',
-    link: '/bookings',
+    link: '/activity/bookings',
     countKey: 'bookings',
   },
   {
@@ -43,7 +43,7 @@ const FEATURES: FeatureCard[] = [
     icon: '📅',
     title: 'My Appointments',
     description: 'Upcoming and past visits',
-    link: '/appointments',
+    link: '/activity/appointments',
   },
 ];
 
@@ -61,9 +61,12 @@ interface PlanSummary {
 export default function MyActivity() {
   const { user, token, ready } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [category, setCategory] = useState<Category>('all');
   const [counts, setCounts] = useState<{ plans: number; bookings: number }>({ plans: 0, bookings: 0 });
   const [authOpen, setAuthOpen] = useState(false);
+
+  const isOverview = location.pathname === '/activity';
 
   useEffect(() => {
     if (!token) {
@@ -79,10 +82,14 @@ export default function MyActivity() {
   }, [token]);
 
   const handleCardClick = (feature: FeatureCard) => {
-    if (feature.link) {
+    if (location.pathname === feature.link) {
+      navigate('/activity');
+    } else {
       navigate(feature.link);
     }
   };
+
+  const isCardActive = (feature: FeatureCard) => location.pathname === feature.link;
 
   const filtered = category === 'all' ? FEATURES : FEATURES.filter((f) => f.category === category);
 
@@ -112,7 +119,6 @@ export default function MyActivity() {
   return (
     <div className="activity-page activity-page-bg">
       <div className="activity-header">
-        <div className="activity-header-icon" aria-hidden>📋</div>
         <div>
           <h1 className="a2-h1">My Activity</h1>
           <div className="activity-header-line" />
@@ -142,7 +148,7 @@ export default function MyActivity() {
           {filtered.map((f, i) => (
             <div key={f.id} style={{ animationDelay: `${i * 60}ms` }}>
               <div
-                className="section-card activity-card"
+                className={`section-card activity-card${isCardActive(f) ? ' activity-card-active' : ''}`}
                 onClick={() => handleCardClick(f)}
                 role="button"
                 tabIndex={0}
@@ -153,27 +159,22 @@ export default function MyActivity() {
                 <div className="activity-card-icon" aria-hidden>{f.icon}</div>
                 <div className="activity-card-title">{f.title}</div>
                 <div className="activity-card-desc">{f.description}</div>
-                {f.countKey && (
-                  <div className="activity-card-meta">
-                    {counts[f.countKey]} {counts[f.countKey] === 1 ? 'item' : 'items'}
-                  </div>
-                )}
+                <div className="activity-card-meta">
+                  {f.countKey ? `${counts[f.countKey]} ${counts[f.countKey] === 1 ? 'item' : 'items'}` : ' '}
+                </div>
                 <div className="activity-card-cta">
-                  {f.link ? (
-                    <>
-                      <span>View all</span>
-                      <span aria-hidden>→</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Start chat</span>
-                      <span aria-hidden>→</span>
-                    </>
-                  )}
+                  <span>{isCardActive(f) ? 'Close' : 'View all'}</span>
+                  <span aria-hidden>{isCardActive(f) ? '×' : '→'}</span>
                 </div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {!isOverview && (
+        <div className="inline-activity-section">
+          <Outlet />
         </div>
       )}
     </div>

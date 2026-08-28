@@ -1,9 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { A2UIStore } from '../a2ui/store';
+import { A2uiRuntime } from '../a2ui/runtime';
 import { upsertRecent } from '../shell/recents';
 import { NEW_CHAT_EVENT } from '../shell/plannerBus';
 import { useAuth } from '../auth/AuthContext';
-import { saveConversation, loadConversation, hydrateStore } from './persistence';
+import { saveConversation, loadConversation } from './persistence';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
 
@@ -33,9 +33,7 @@ export interface Turn {
   query: string;
   intent: Intent | null;
   loading: boolean;
-  store: A2UIStore;
-  /** Populated when the backend rejects the prompt (rate limit, too large, etc.). */
-  error?: string;
+  runtime: A2uiRuntime;
 }
 
 /** One "chat" the way ChatGPT/Claude mean it — its own scrollback of turns,
@@ -106,10 +104,10 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
   const plan = useCallback(async (q: string, targetConversationId?: string) => {
     if (!q.trim()) return;
     const id = crypto.randomUUID();
-    const store = new A2UIStore();
+    const runtime = new A2uiRuntime();
     const conversationId = targetConversationId || activeId;
     setConversations((prev) => prev.map((c) => (
-      c.id === conversationId ? { ...c, turns: [...c.turns, { id, sessionId: null, query: q, intent: null, loading: true, store }] } : c
+      c.id === conversationId ? { ...c, turns: [...c.turns, { id, sessionId: null, query: q, intent: null, loading: true, runtime }] } : c
     )));
 
     const res = await fetch(`${API}/api/plan`, {
@@ -131,10 +129,16 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     updateTurn(id, { sessionId: sid, intent: parsedIntent });
     upsertRecent(conversationId, q, parsedIntent?.destination);
 
+    // A clarification reply ("which city did you mean?") has no agents to
+    // wait on — its whole answer is the summary, already shown. Clear the
+    // loading state now so no skeleton lingers; any surface that does still
+    // stream (finance/records replies) clears it again harmlessly below.
+    if (!parsedIntent?.agents?.length) updateTurn(id, { loading: false });
+
     const es = new EventSource(`${API}/api/events/${sid}`);
     esMapRef.current.set(id, es);
     es.addEventListener('a2ui', (e: MessageEvent) => {
-      store.apply(JSON.parse(e.data));
+      runtime.processMessages([JSON.parse(e.data)]);
       updateTurn(id, { loading: false });
       // Close the SSE connection after a grace period of inactivity so the
       // browser's per-domain connection pool (6 slots) doesn't saturate.
@@ -176,7 +180,8 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     const persisted = loadConversation(id);
     if (persisted && persisted.turns.length > 0) {
       const restoredTurns: Turn[] = persisted.turns.map((t) => {
-        const store = hydrateStore(t.surfaces);
+        const runtime = new A2uiRuntime();
+        runtime.processMessages(t.messages || []);
         // Keep listening for further live updates (e.g. clicking Select on a
         // restored flight still works) as long as the backend session — an
         // in-memory process independent of this page refresh — is still up.
@@ -186,7 +191,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
           const es = new EventSource(`${API}/api/events/${t.sessionId}`);
           esMapRef.current.set(t.id, es);
           es.addEventListener('a2ui', (e: MessageEvent) => {
-            store.apply(JSON.parse(e.data));
+            runtime.processMessages([JSON.parse(e.data)]);
             updateTurn(t.id, { loading: false });
             const existing = esCloseTimeoutRef.current.get(t.id);
             if (existing) window.clearTimeout(existing);
@@ -205,7 +210,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
             esCloseTimeoutRef.current.delete(t.id);
           });
         }
-        return { id: t.id, sessionId: t.sessionId, query: t.query, intent: t.intent, loading: false, store };
+        return { id: t.id, sessionId: t.sessionId, query: t.query, intent: t.intent, loading: false, runtime };
       });
       setConversations((prev) => [...prev, { id, turns: restoredTurns }]);
       setActiveId(id);
