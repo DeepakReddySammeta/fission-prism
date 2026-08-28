@@ -1,6 +1,6 @@
 {
   "name": "fission-prism-backend",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
