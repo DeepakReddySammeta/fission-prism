@@ -861,8 +861,14 @@ body {
 
 .shell { display: flex; min-height: 100vh; }
 .shell-main { flex: 1; min-width: 0; }
-.shell-main-collapsed .chat-composer-inner-centered { transform: translateX(96px); }
-.shell-main-collapsed .chat-stream { transform: translateX(96px); }
+/* The content column stays centred (margin:0 auto); when the sidebar is
+   collapsed it widens to take up the reclaimed space instead of leaving a
+   lopsided empty gutter. Stream + composer move together so they stay aligned. */
+.chat-stream,
+.chat-composer-inner,
+.chat-composer-inner-centered { transition: max-width var(--dur-med) var(--ease); }
+.shell-main-collapsed .chat-stream,
+.shell-main-collapsed .chat-composer-inner { max-width: 1320px; }
 
 .sidebar {
   width: 260px; flex: 0 0 260px;
