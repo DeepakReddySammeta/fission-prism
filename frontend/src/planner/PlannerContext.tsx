@@ -4,6 +4,7 @@ import { upsertRecent } from '../shell/recents';
 import { NEW_CHAT_EVENT } from '../shell/plannerBus';
 import { useAuth } from '../auth/AuthContext';
 import { saveConversation, loadConversation } from './persistence';
+import { uuid } from '../lib/uuid';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
 
@@ -79,7 +80,7 @@ const PlannerContext = createContext<PlannerContextValue | null>(null);
  * connections — one level above the router, so navigating to My Plans or My
  * Bookings and back never unmounts any of it. */
 export function PlannerProvider({ children }: { children: React.ReactNode }) {
-  const firstIdRef = useRef(crypto.randomUUID());
+  const firstIdRef = useRef(uuid());
   const [conversations, setConversations] = useState<Conversation[]>([{ id: firstIdRef.current, turns: [] }]);
   const [activeId, setActiveId] = useState<string>(firstIdRef.current);
   const esMapRef = useRef<Map<string, EventSource>>(new Map());
@@ -126,7 +127,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
 
   const plan = useCallback(async (q: string, targetConversationId?: string) => {
     if (!q.trim()) return;
-    const id = crypto.randomUUID();
+    const id = uuid();
     const runtime = new A2uiRuntime();
     const conversationId = targetConversationId || activeId;
     setConversations((prev) => prev.map((c) => (
@@ -167,7 +168,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
   const startNewChat = useCallback(() => {
     const current = conversations.find((c) => c.id === activeId);
     if (!current || current.turns.length === 0) return;
-    const newId = crypto.randomUUID();
+    const newId = uuid();
     setConversations((prev) => [...prev, { id: newId, turns: [] }]);
     setActiveId(newId);
   }, [activeId, conversations]);

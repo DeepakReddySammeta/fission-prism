@@ -15,7 +15,10 @@ export function useVoiceSearch(onInterim: (text: string) => void, onFinal: (text
   const Ctor: any = typeof window !== 'undefined'
     ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     : undefined;
-  const supported = !!Ctor;
+  // The constructor still exists over plain HTTP, but Chrome refuses to start
+  // recognition outside a secure context (HTTPS or localhost) — so hide the
+  // mic button there rather than leave a control that silently does nothing.
+  const supported = !!Ctor && (typeof window === 'undefined' || window.isSecureContext);
 
   const start = useCallback(() => {
     if (!supported || listening) return;
