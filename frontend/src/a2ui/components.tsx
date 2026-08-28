@@ -319,7 +319,7 @@ const Disclosure = impl(DisclosureApi, ({ props, buildChild }) => {
   if (open) return <>{props.child ? buildChild(props.child) : null}</>;
   return (
     <div className="a2-row">
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>{label}</Button>
+      <Button variant="default" size="sm" className="a2-disclosure-btn" onClick={() => setOpen(true)}>{label}</Button>
     </div>
   );
 });
