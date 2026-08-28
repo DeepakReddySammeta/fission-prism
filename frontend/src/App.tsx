@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import type { ActionPayload } from './types';
-import { Surface } from './a2ui/catalog';
+import type { A2uiClientAction } from '@a2ui/web_core/v0_9';
+import { Surface } from './a2ui/Surface';
+import { surfaceData, hasComponent, componentCount } from './a2ui/runtime';
 import { downloadTripPdf } from './pdf';
 import { useAuth } from './auth/AuthContext';
 import { AuthDialog } from './auth/AuthDialog';
@@ -85,10 +86,10 @@ function HotelSkeleton() {
  * dismissed cross-sell prompts, save/PDF button state) lives locally here,
  * scoped to this turn — it never leaks into other turns or the parent. */
 function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (token: string) => void) => void }) {
-  const storeVersion = useSyncExternalStore(turn.store.subscribe, turn.store.getSnapshot);
+  const storeVersion = useSyncExternalStore(turn.runtime.subscribe, turn.runtime.getSnapshot);
   const { token } = useAuth();
   const { plan } = usePlanner();
-  const { store, sessionId, intent, loading } = turn;
+  const { runtime, sessionId, intent, loading } = turn;
 
   const [selectedFlightId, setSelectedFlightId] = useState<string | null>(null);
   const [crossSellDismissed, setCrossSellDismissed] = useState<Set<string>>(new Set());
@@ -153,13 +154,13 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // — that card handles the flight instead, once the room side is also in.
   useEffect(() => {
     if (selectedFlightId || wantsCombo) return;
-    const rows: any[] = store.surfaces.get('flights')?.dataModel?.flights || [];
+    const rows: any[] = surfaceData(runtime.getSurface('flights'), '/flights') || [];
     const recommended = rows.find((f) => f.recommended);
     if (recommended) setSelectedFlightId(String(recommended.id));
-  }, [store, storeVersion, selectedFlightId, wantsCombo]);
+  }, [runtime, storeVersion, selectedFlightId, wantsCombo]);
 
   const onAction = useCallback(
-    (action: ActionPayload) => {
+    (action: A2uiClientAction) => {
       if (action.name === 'selectFlight') {
         setSelectedFlightId(String(action.context.flightId));
         setFlightConfirmed(false);
@@ -172,7 +173,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
         // its own content. Reuses the exact "show me details of my X" flow a
         // typed query already goes through (see intent.ts), so this needs no
         // action/session round trip of its own.
-        const records: any[] = store.surfaces.get('records')?.dataModel?.records || [];
+        const records: any[] = surfaceData(runtime.getSurface('records'), '/records') || [];
         const record = records.find((r) => String(r.id) === String(action.context.recordId));
         // The trailing "plan" is deliberate, not decorative — the backend's
         // my-records detector requires a recognized noun (plan/trip/
@@ -215,7 +216,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
       }
       if (!sessionId) return;
       if (action.name === 'selectRoom') {
-        const rooms: any[] = store.surfaces.get('hotels')?.dataModel?.rooms || [];
+        const rooms: any[] = surfaceData(runtime.getSurface('hotels'), '/rooms') || [];
         const room = rooms.find((r) => String(r.id) === String(action.context.roomId));
         if (room) pushMessage(`🏨 Room booked — ${room.name}, ₹${room.price}/night. Save the trip or download the PDF whenever you're ready.`);
       }
@@ -227,7 +228,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
         // context (only the id is) — read them from the surface's already-
         // resolved data model, the same way selectRoom above reads the room
         // list rather than duplicating that data into the action context.
-        const doctor = store.surfaces.get('health')?.dataModel?.doctor as { name?: string } | undefined;
+        const doctor = surfaceData(runtime.getSurface('health'), '/doctor') as { name?: string } | undefined;
         pushMessage(
           `✅ Appointment confirmed with ${doctor?.name || 'the doctor'} on ${formatAppointmentDate(String(action.context.preferredDate || ''))} `
           + `at ${action.context.preferredTime}. The reference will show on the confirmation above.`
@@ -242,8 +243,15 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
         body: JSON.stringify({ ...action, sessionId }),
       });
     },
-    [sessionId, store, pushMessage, plan, token]
+    [sessionId, runtime, pushMessage, plan, token]
   );
+
+  // The runtime is created in PlannerContext before this component mounts;
+  // wire our action handler into it (and keep it fresh as closures change).
+  useEffect(() => {
+    runtime.setActionHandler(onAction);
+    return () => runtime.setActionHandler(undefined);
+  }, [runtime, onAction]);
 
   const confirmFlight = useCallback(() => {
     if (!sessionId || !selectedFlightId) return;
@@ -258,7 +266,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
     }
     setConfirmError('');
     setFlightConfirmed(true);
-    const flights: any[] = store.surfaces.get('flights')?.dataModel?.flights || [];
+    const flights: any[] = surfaceData(runtime.getSurface('flights'), '/flights') || [];
     const flight = flights.find((f) => String(f.id) === selectedFlightId);
     if (flight) {
       const total = flight.price * (adults + children) * cabinMultiplier(cabinClass);
@@ -282,7 +290,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
         sessionId,
       }),
     });
-  }, [sessionId, selectedFlightId, passengerNames, adults, children, cabinClass, passengerEmail, wantsReturn, returnDate, store, pushMessage]);
+  }, [sessionId, selectedFlightId, passengerNames, adults, children, cabinClass, passengerEmail, wantsReturn, returnDate, runtime, pushMessage]);
 
 
   const expand = useCallback(
@@ -332,33 +340,37 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
     }
   }, [sessionId, pdfBusy, pushMessage]);
 
-  const flightsSurface = store.surfaces.get('flights');
-  const hotelsSurface = store.surfaces.get('hotels');
-  const tripSurface = store.surfaces.get('trip');
-  const canDownload = !!tripSurface && tripSurface.components.size > 0;
+  const flightsSurface = runtime.getSurface('flights');
+  const hotelsSurface = runtime.getSurface('hotels');
+  const tripSurface = runtime.getSurface('trip');
+  // Plain snapshots of each surface's data model — `SurfaceModel.dataModel`
+  // is a reactive store, not the raw object, so read the root through it.
+  const flightsData: any = surfaceData(flightsSurface, '/') || {};
+  const hotelsData: any = surfaceData(hotelsSurface, '/') || {};
+  const canDownload = !!tripSurface && componentCount(tripSurface) > 0;
   // A chat-asked "my plans"/"my bookings" (records list) or "details of my
   // X trip" (recordDetail) query — rendered inline in the turn's own main
   // area, not the trip-rail sidebar (that only watches surfaceId 'trip').
-  const recordsSurface = store.surfaces.get('records');
-  const recordDetailSurface = store.surfaces.get('recordDetail');
+  const recordsSurface = runtime.getSurface('records');
+  const recordDetailSurface = runtime.getSurface('recordDetail');
   // A chat-asked "my upcoming appointments"/"past appointments" query —
   // its own surfaceId, same reasoning as recordsSurface above.
-  const appointmentsSurface = store.surfaces.get('appointments');
+  const appointmentsSurface = runtime.getSurface('appointments');
   // The personal finance agent — a budget breakdown, a logged expense, a
   // savings goal, or a spending summary, depending on what was typed. No
   // buttons/actions of its own — purely conversation-driven.
-  const financeSurface = store.surfaces.get('finance');
+  const financeSurface = runtime.getSurface('finance');
   // "Best places to visit in X" — inspiration, not a flights/hotels search;
   // its own surface so it renders alongside (never instead of) those.
-  const destinationsSurface = store.surfaces.get('destinations');
+  const destinationsSurface = runtime.getSurface('destinations');
   // "I have chest pain" / "find me a dentist" — doctor list, drill-down
   // profile, and the appointment form/confirmation all share this one
   // surfaceId, the same way hotels list vs. rooms detail do.
-  const healthSurface = store.surfaces.get('health');
+  const healthSurface = runtime.getSurface('health');
 
   const expectedAgents = intent?.agents || [];
-  const flightsPending = expectedAgents.includes('flights') && !(flightsSurface && flightsSurface.components.size > 0);
-  const hotelsPending = expectedAgents.includes('hotels') && !(hotelsSurface && hotelsSurface.components.size > 0);
+  const flightsPending = expectedAgents.includes('flights') && !(flightsSurface && componentCount(flightsSurface) > 0);
+  const hotelsPending = expectedAgents.includes('hotels') && !(hotelsSurface && componentCount(hotelsSurface) > 0);
   // Weather is a live, real-world reading tied to an actual trip — it should
   // never appear for a bare inspiration query ("best places to visit...")
   // or any other non-booking intent, only once flights/hotels are genuinely
@@ -367,11 +379,11 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
   const selectedFlight = useMemo(() => {
     if (!selectedFlightId || !flightsSurface) return null;
-    const rows: any[] = flightsSurface.dataModel?.flights || [];
+    const rows: any[] = flightsData.flights || [];
     return rows.find((f) => f.id === selectedFlightId) || null;
-  }, [selectedFlightId, flightsSurface]);
+  }, [selectedFlightId, flightsSurface, flightsData]);
 
-  const showFlightsFullList = flightsSurface && flightsSurface.components.size > 0 && !selectedFlight;
+  const showFlightsFullList = flightsSurface && componentCount(flightsSurface) > 0 && !selectedFlight;
   const showAddHotels = !loading && expectedAgents.length === 1 && expectedAgents[0] === 'flights'
     && !hotelsSurface && !crossSellDismissed.has('hotels');
   const showAddFlights = !loading && expectedAgents.length === 1 && expectedAgents[0] === 'hotels'
@@ -384,9 +396,9 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // the hotel list with one hotel's rooms (see runAgents/confirmFlight in
   // server.ts); `recommendedRoomRow` stays null until that's happened.
   const recommendedFlightRow = wantsCombo
-    ? (flightsSurface?.dataModel?.flights || []).find((f: any) => f.recommended) || null
+    ? ((flightsData.flights || []) as any[]).find((f: any) => f.recommended) || null
     : null;
-  const roomsData = wantsCombo ? hotelsSurface?.dataModel : null;
+  const roomsData = wantsCombo ? hotelsData : null;
   const recommendedRoomRow = wantsCombo
     ? (roomsData?.rooms || []).find((r: any) => r.recommended) || null
     : null;
@@ -418,13 +430,13 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
         <div className="results-main">
           {intent?.destination && wantsBookingWeather && <WeatherCard destination={intent.destination} />}
 
-          {destinationsSurface && destinationsSurface.components.size > 0 && (
+          {componentCount(destinationsSurface) > 0 && (
             <div className="reveal">
-              <Surface store={store} surface={destinationsSurface} onAction={onAction} className="surface-destinations" />
+              <Surface surface={destinationsSurface} className="surface-destinations" />
             </div>
           )}
 
-          {healthSurface && healthSurface.components.size > 0 && (
+          {componentCount(healthSurface) > 0 && (
             // Keyed the same way the hotels list/room-detail swap is —
             // doctor list, one doctor's profile+booking form, and the
             // booking confirmation all share this surfaceId, and without a
@@ -433,33 +445,33 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
             // screens.
             <div
               className="reveal"
-              key={healthSurface.components.has('panel_book') ? 'profile' : healthSurface.components.has('ref_badge') ? 'confirmed' : 'list'}
+              key={hasComponent(healthSurface, 'panel_book') ? 'profile' : hasComponent(healthSurface, 'ref_badge') ? 'confirmed' : 'list'}
             >
-              <Surface store={store} surface={healthSurface} onAction={onAction} className="surface-health" />
+              <Surface surface={healthSurface} className="surface-health" />
             </div>
           )}
 
-          {recordsSurface && recordsSurface.components.size > 0 && !(recordDetailSurface && recordDetailSurface.components.size > 0) && (
+          {componentCount(recordsSurface) > 0 && !(componentCount(recordDetailSurface) > 0) && (
             <div className="reveal">
-              <Surface store={store} surface={recordsSurface} onAction={onAction} className="surface-records" />
+              <Surface surface={recordsSurface} className="surface-records" />
             </div>
           )}
 
-          {appointmentsSurface && appointmentsSurface.components.size > 0 && (
+          {componentCount(appointmentsSurface) > 0 && (
             <div className="reveal">
-              <Surface store={store} surface={appointmentsSurface} onAction={onAction} className="surface-appointments" />
+              <Surface surface={appointmentsSurface} className="surface-appointments" />
             </div>
           )}
 
-          {financeSurface && financeSurface.components.size > 0 && (
+          {componentCount(financeSurface) > 0 && (
             <div className="reveal">
-              <Surface store={store} surface={financeSurface} onAction={onAction} className="surface-finance" />
+              <Surface surface={financeSurface} className="surface-finance" />
             </div>
           )}
 
-          {recordDetailSurface && recordDetailSurface.components.size > 0 && (
+          {componentCount(recordDetailSurface) > 0 && (
             <div className="flight-detail-card reveal">
-              <Surface store={store} surface={recordDetailSurface} onAction={onAction} className="surface-record-detail" />
+              <Surface surface={recordDetailSurface} className="surface-record-detail" />
             </div>
           )}
 
@@ -472,8 +484,6 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
           {comboReady && (
             <TripBuilderCard
               sessionId={sessionId!}
-              store={store}
-              onAction={onAction}
               pushMessage={pushMessage}
               onBrowseAll={() => setShowFullOptions(true)}
               flightRow={recommendedFlightRow}
@@ -494,7 +504,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
           {(flightsPending || showFlightsFullList) && (
             <div className="reveal">
               {flightsPending ? <FlightSkeleton /> : (
-                <Surface store={store} surface={flightsSurface!} onAction={onAction} className="surface-flights" />
+                <Surface surface={flightsSurface!} className="surface-flights" />
               )}
             </div>
           )}
@@ -675,15 +685,15 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
             </div>
           )}
 
-          {(hotelsPending || (hotelsSurface && hotelsSurface.components.size > 0)) && (
+          {(hotelsPending || componentCount(hotelsSurface) > 0) && (
             // Keyed by which "shape" of the hotels surface this is — the
             // hotel list and a single hotel's room view share the same
             // surfaceId, so without a key change here React would just patch
             // the existing DOM in place and the whole list-to-detail swap
             // would happen with no transition at all.
-            <div className="reveal" key={hotelsPending ? 'pending' : hotelsSurface?.components.has('room_list') ? 'rooms' : 'list'}>
+            <div className="reveal" key={hotelsPending ? 'pending' : hasComponent(hotelsSurface, 'room_list') ? 'rooms' : 'list'}>
               {hotelsPending ? <HotelSkeleton /> : (
-                <Surface store={store} surface={hotelsSurface!} onAction={onAction} className="surface-hotels" />
+                <Surface surface={hotelsSurface!} className="surface-hotels" />
               )}
             </div>
           )}
@@ -692,7 +702,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
         {canDownload && !wantsCombo && (
           <aside className="trip-rail reveal">
-            <Surface store={store} surface={tripSurface!} onAction={onAction} className="surface-trip" />
+            <Surface surface={tripSurface!} className="surface-trip" />
             <Button variant="default" className="w-[calc(100%-32px)] mx-4 mb-2" onClick={() => saveTrip()} disabled={saveState === 'saving'}>
               {saveState === 'saved' ? 'Saved ✓' : saveState === 'saving' ? 'Saving…' : 'Save to My Plans'}
             </Button>

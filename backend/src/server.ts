@@ -6,7 +6,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { OAuth2Client } from 'google-auth-library';
 import type { ActionPayload, FlightOption, HotelOption, ParsedIntent, RoomOption, TripSummary } from './types';
-import { PORT, LLM_ENABLED, GOOGLE_CLIENT_ID } from './config';
+import { PORT, LLM_ENABLED, LLM_PROVIDER, LLM_MODEL, GOOGLE_CLIENT_ID } from './config';
 import {
   parseIntent, detectMyRecordsIntent, detectExplorationIntent, detectAppointmentsQuery,
   type MyRecordsIntent, type AppointmentsQuery,
@@ -44,7 +44,11 @@ const app = Fastify({ logger: false });
 
 app.register(cors, { origin: true });
 
-app.get('/api/health', async () => ({ ok: true, llm: LLM_ENABLED ? 'groq' : 'mock' }));
+app.get('/api/health', async () => ({
+  ok: true,
+  llm: LLM_ENABLED ? LLM_PROVIDER : 'mock',
+  model: LLM_ENABLED ? LLM_MODEL : null,
+}));
 
 /** Live third-party lookup, not a governed record — see weather/weather.ts.
  * Kept as its own plain GET (no session, no SSE) since it's a side dish to
@@ -311,7 +315,8 @@ function emitFinance(sessionId: string, pending: PendingFinance) {
  * connects, same as every other agent-backed response in this app. */
 function runExploration(sessionId: string, pending: NonNullable<ReturnType<typeof getSession>>['pendingExploration']) {
   if (!pending) return;
-  getDestinationSuggestions(pending.region, pending.season).then(({ destinations }) => {
+  getDestinationSuggestions(pending.region, pending.season).then(({ destinations, source }) => {
+    console.log(`[agent] destinations for ${pending.region}: ${source === 'live' ? 'LLM data' : 'mock fallback'} (${destinations.length} results)`);
     if (!getSession(sessionId)) return;
     emitAll(sessionId, destinationsSurface('destinations', pending.region, pending.season, pending.durationNights, destinations));
   });
@@ -1186,7 +1191,8 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
   // real result lands; the frontend shows its own "Thinking…" skeleton in
   // the gap.
   if (intent.agents.includes('flights') && intent.origin) {
-    getFlightOptions(intent.origin, intent.destination, departureDate).then(({ flights }) => {
+    getFlightOptions(intent.origin, intent.destination, departureDate).then(({ flights, source }) => {
+      console.log(`[agent] flights ${intent.origin}→${intent.destination}: ${source === 'live' ? 'LLM data' : 'mock fallback'} (${flights.length} results)`);
       const s = getSession(sessionId);
       if (!s) return;
       // Picked when the query named a time/flight, or just used booking
@@ -1206,7 +1212,8 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
   }
 
   if (intent.agents.includes('hotels')) {
-    getHotelOptions(intent.destination).then(({ hotels }) => {
+    getHotelOptions(intent.destination).then(({ hotels, source }) => {
+      console.log(`[agent] hotels in ${intent.destination}: ${source === 'live' ? 'LLM data' : 'mock fallback'} (${hotels.length} results)`);
       const s = getSession(sessionId);
       if (!s) return;
       s.hotelsCache = new Map(hotels.map((h) => [h.id, h]));
@@ -1656,5 +1663,5 @@ app.delete<{ Params: { id: string } }>('/api/plans/:id', { preHandler: requireAu
 });
 
 app.listen({ port: PORT, host: '0.0.0.0' }).then(() => {
-  console.log(`Voyage AI backend listening on :${PORT} (${LLM_ENABLED ? 'Groq LLM enabled' : 'mock data mode — set GROQ_API_KEY to enable live generation'})`);
+  console.log(`Voyage AI backend listening on :${PORT} (${LLM_ENABLED ? `${LLM_PROVIDER} LLM enabled — ${LLM_MODEL}` : 'mock data mode — configure an LLM provider to enable live generation'})`);
 });

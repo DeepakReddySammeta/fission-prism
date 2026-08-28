@@ -1,5 +1,5 @@
 import type { FlightOption } from '../types';
-import { generateJSON } from '../llm/groq';
+import { generateJSON } from '../llm';
 import { mockFlights } from '../mock/data';
 import { LLM_ENABLED } from '../config';
 
