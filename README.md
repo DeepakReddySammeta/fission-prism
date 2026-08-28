@@ -1,6 +1,7 @@
 # Voyage AI
 
-A conversational trip-planning proof of concept built to showcase
+A conversational proof of concept — **trip planning, find-a-doctor, and
+personal finance in one chat** — built to showcase
 **[A2UI](https://a2ui.org/)**: agents generate UI as *data* — a stream of
 `createSurface` / `updateComponents` / `updateDataModel` envelopes (A2UI
 v0.9) — and the official [`@a2ui/react`](https://www.npmjs.com/package/@a2ui/react)
@@ -15,8 +16,10 @@ system) plus a few logic functions — so the app keeps its own look while the
 a2ui engine does the binding, templating, action routing and validation.
 
 Runs with **zero cost and zero setup** — every agent falls back to
-deterministic mock data if no Groq key is present. Add a free Groq API key to
-switch agents over to live LLM generation.
+deterministic mock data if no LLM credentials are present. Add a free Groq API
+key (or point it at AWS Bedrock) to switch the agents that generate content
+over to live LLM output; the doctor and finance agents are deterministic
+either way (see below).
 
 ## Features
 
@@ -29,6 +32,30 @@ switch agents over to live LLM generation.
 - **Multi-traveler booking with cabin class** — adult/children counts, a real
   Economy / Premium Economy / Business / First choice (each with its own
   price multiplier and baggage allowance), and one name field per adult.
+- **Hotels as a card grid** — the hotels list renders as a 2-up grid of
+  photo-topped cards; "View rooms" opens that hotel's detail + rooms as its
+  own chat turn (not an in-place swap), so the list above stays put.
+- **Find a doctor** — describe a symptom ("splitting migraine for two days",
+  "toothache") or ask for a specialist ("I need a cardiologist", "find a
+  dentist") and get a ranked list of doctors with the hospital they practise
+  at, a drill-in profile, and an appointment form → confirmation. The LLM's
+  only job is symptom → specialty; matching, hospitals and slots are a
+  deterministic lookup over a curated dataset. It never diagnoses, evaluates
+  severity, or suggests treatment. "My upcoming appointments" answers inline.
+- **Personal finance** — set a budget from a sentence ("I earn 60000, rent is
+  20000, food 12000"), log expenses ("spent 500 on groceries"), set and fund
+  savings goals, ask for a spending summary or a whole "portfolio" overview
+  (cash flow, budget utilisation, recent expenses, goals analysis). Pure
+  deterministic extraction over the user's own numbers — no rupee amount is
+  ever hallucinated — and every figure is scoped to the signed-in account.
+- **App switcher in the sidebar** — an "Apps" panel (Trip Planner /
+  Healthcare / Finance) under "New chat"; the one matching the current
+  conversation lights up as the reply comes in. Read-only status indicators,
+  not navigation.
+- **Ordered result streaming** — when a query expects both flights and
+  hotels, the two agents stream back independently; the UI holds the hotels
+  section (skeleton and all) until flights have rendered, so a fast hotels
+  response never strands the flights skeleton mid-page.
 - **Destination discovery** — "best places to visit in India in monsoon" or
   "where should I go for 5 days" returns a curated, season-aware list of
   real places to consider (not a flight/hotel search). Each place can be
@@ -57,17 +84,24 @@ switch agents over to live LLM generation.
 
 ## Architecture
 
-```
+```text
 User query
    │
-   ├─ "my plans" / "my bookings" ──▶ answered directly from the database (no LLM)
-   ├─ "best places to visit..." ───▶ Destinations agent (region + season aware)
+   │  fast deterministic classifiers run first — no LLM, no session:
+   ├─ "my plans" / "my bookings" ─────▶ answered directly from the database
+   ├─ "my appointments" ──────────────▶ appointments lookup (database)
+   ├─ "budget / spent / portfolio…" ──▶ Finance agent (regex/heuristic extraction)
+   ├─ "best places to visit…" ────────▶ Destinations agent (region + season aware)
+   ├─ "View rooms at <hotel>" ────────▶ jump straight to that hotel's rooms
    │
    ▼
-Intent parser  ──▶  decides which agents to call (flights / hotels / both)
+Intent parser  ──▶  plan_trip / browse_flights / browse_hotels / find_doctor / refine
+   │                 (Groq or AWS Bedrock, per LLM_PROVIDER; heuristic fallback)
    │
+   ├─ find_doctor ──▶ Health agent: LLM maps symptom → specialty, then a
+   │                  deterministic match over curated doctors + hospitals
    ▼
-Flights Agent, Hotels Agent  (Groq LLM if GROQ_API_KEY set, else deterministic mock data)
+Flights Agent, Hotels Agent  (live LLM if configured, else deterministic mock data)
    │  build A2UI envelopes
    ▼
 Trust boundary (validateEnvelope)  ──▶  drops anything off the component/function catalog
@@ -99,8 +133,10 @@ call carries only the raw query text or a bare origin/destination string.
 
 ## Tech stack
 
-**Backend:** Fastify, TypeScript, better-sqlite3, the Groq SDK (model
-`openai/gpt-oss-20b`), bcryptjs, jsonwebtoken, google-auth-library.
+**Backend:** Fastify, TypeScript, better-sqlite3, two interchangeable LLM
+backends — the Groq SDK (default, model `openai/gpt-oss-20b`) and
+`@anthropic-ai/bedrock-sdk` (a Claude model on AWS Bedrock) — bcryptjs,
+jsonwebtoken, google-auth-library.
 
 **Frontend:** React 19, Vite, TypeScript, Tailwind CSS,
 [`@a2ui/react`](https://www.npmjs.com/package/@a2ui/react) +
@@ -126,17 +162,24 @@ code.
 Two independent apps — not an npm workspace. Each has its own
 `node_modules` and its own `package.json`.
 
-```
+```text
 backend/
   src/server.ts          every HTTP route: /api/plan, /api/events (SSE), /api/action, auth, saved plans
-  src/agents/             intent.ts, flights.ts, hotels.ts, destinations.ts, recommend.ts — one job each
+  src/agents/             intent.ts, flights.ts, hotels.ts, destinations.ts,
+                          health.ts (doctor/appointment matching), finance.ts (budget/expense/goal
+                          extraction), recommend.ts — one job each
   src/orchestrator/       sessions.ts (SSE state + reduceForWire delta emit),
-                          envelopes.ts (A2UI UI trees), trust.ts (allowlist)
-  src/llm/                index.ts (generateJSON — the single function every agent calls),
+                          envelopes.ts (A2UI UI trees), trust.ts (allowlist),
+                          hotelIndex.ts (name lookup for "View rooms at X" / "details of X hotel")
+  src/llm/                index.ts (generateJSON — the single function every content agent calls),
                           groq.ts / bedrock.ts (interchangeable backends, pick via LLM_PROVIDER)
+  src/mock/               curated datasets used both as the no-LLM fallback and as the
+                          fixed source of truth for doctors/hospitals/finance
   src/weather/weather.ts  live Open-Meteo lookup — deliberately outside the agent pipeline
   src/auth/               email/password + Google auth, JWT sessions
-  src/db.ts               SQLite (better-sqlite3) — accounts + saved plans, gitignored data.db
+  src/db.ts               SQLite (better-sqlite3) — accounts, saved plans, expenses, goals,
+                          appointments. Path is DATABASE_PATH or backend/data.db (gitignored)
+  src/config.ts           all env vars in one place; enforces JWT_SECRET when NODE_ENV=production
   src/types.ts            A2UI protocol + domain types (the full copy)
 
 frontend/
@@ -151,7 +194,8 @@ frontend/
   src/components/         TripBuilderCard, WeatherCard, Stepper — hand-built, reused across surfaces
   src/components/ui/      Fission design-system primitives, vendored in via the shadcn CLI (see below)
   src/lib/useVoiceSearch.ts  Web Speech API wrapper
-  src/shell/              sidebar, recents/pinned, theme toggle
+  src/shell/              sidebar, recents/pinned, theme toggle,
+                          apps.ts (the Apps panel list + which app a turn belongs to)
   src/auth/, src/pages/   auth context/dialog, My Plans gallery + detail, My Bookings
   src/types.ts            domain shapes + CATALOG_ID only — A2UI protocol types
                           now come from @a2ui/web_core
@@ -273,17 +317,29 @@ npm run dev:backend
 npm run dev:frontend
 ```
 
-Open **<http://localhost:5173>** and try: *"Plan a trip from Hyderabad to Goa
-for 3 nights"*, *"best hotels in Manali"*, *"flights from Delhi to
-Bengaluru"*, or *"best places to visit in India in monsoon"*.
+Open **<http://localhost:5173>** and try:
+
+- *"Plan a trip from Hyderabad to Goa for 3 nights"*, *"best hotels in
+  Manali"*, *"flights from Delhi to Bengaluru"*
+- *"best places to visit in India in monsoon"*
+- *"I've had a splitting migraine for two days, find me a doctor"*, *"find a
+  dentist"*, *"my upcoming appointments"*
+- *"I earn 60000, rent is 20000, food 12000"*, *"spent 500 on groceries"*,
+  *"give me my portfolio"*
 
 By default every agent runs on **deterministic mock data** — same shapes,
 same flow, no API key needed. `GET /api/health` reports `{"llm":"mock"}` in
-this mode.
+this mode (or `{"llm":"groq"|"bedrock","model":"…"}` once configured).
 
 ### Enabling live LLM generation (optional)
 
-The agents talk to one of two interchangeable providers, selected by
+Only the agents that *invent content* use the LLM: intent parsing, and the
+flights / hotels / destinations generators. The doctor agent uses the LLM for
+one narrow step (symptom → specialty string) and is otherwise a deterministic
+lookup; the finance agent uses no LLM at all. So a missing key degrades the
+travel demo to fixed sample data — it doesn't break health or finance.
+
+The content agents talk to one of two interchangeable providers, selected by
 `LLM_PROVIDER` in `backend/.env` (`cp .env.example .env` first):
 
 - **`groq`** (default) — get a free key at
@@ -305,8 +361,10 @@ that one request falls back to mock data automatically rather than erroring out.
 ### Accounts, saved plans, and Google sign-in
 
 Email/password sign-in and "My Plans"/"My Bookings" work out of the box —
-accounts and saved plans live in `backend/data.db` (SQLite, gitignored,
-created automatically on first run). Nothing to configure.
+accounts, saved plans, logged expenses, savings goals, and appointments all
+live in `backend/data.db` (SQLite, gitignored, created automatically on first
+run). Nothing to configure. Set `DATABASE_PATH` to move that file elsewhere
+(e.g. a mounted volume in production); its directory is created if missing.
 
 Google sign-in is optional and hidden until configured: create an OAuth
 Client ID at
@@ -327,9 +385,11 @@ non-functional button.
 ## What this demonstrates about A2UI
 
 - **Agent-generated UI, not agent-generated text.** Flights, hotels, rooms,
-  trip summaries, saved-plan lists, and destination suggestions are all
-  different data shapes rendered by the same `@a2ui/react` engine over one
-  small custom catalog — none of them is a hand-coded screen.
+  trip summaries, saved-plan lists, destination suggestions, doctor lists and
+  profiles, appointment forms, and every finance card (budget breakdown,
+  expense confirmation, goal tracker, portfolio) are all different data
+  shapes rendered by the same `@a2ui/react` engine over one small custom
+  catalog — none of them is a hand-coded screen.
 - **The real renderer.** The client is `@a2ui/react`'s `MessageProcessor` +
   `A2uiSurface` + generic binder, not a bespoke interpreter — the same code
   path any A2UI client would use. Voyage only supplies the *catalog*
@@ -366,11 +426,12 @@ unauthenticated requests before any handler logic runs, and the LLM never
 receives PII (email/name/token) in any prompt.
 
 Not production-hardened, deliberately: CORS is wide open (`origin: true`),
-the JWT signing secret falls back to a hardcoded dev value if unset, there's
-no rate limiting, request validation is ad hoc rather than schema-enforced,
-and the auth token lives in `localStorage` rather than an httpOnly cookie.
-None of this affects the actual A2UI trust boundary (the envelope allowlist),
-which is the part this project exists to demonstrate.
+the JWT signing secret falls back to a hardcoded dev value when unset (the
+server does refuse to start with that default once `NODE_ENV=production`),
+there's no rate limiting, request validation is ad hoc rather than
+schema-enforced, and the auth token lives in `localStorage` rather than an
+httpOnly cookie. None of this affects the actual A2UI trust boundary (the
+envelope allowlist), which is the part this project exists to demonstrate.
 
 ## Deployment (free tier)
 
@@ -378,8 +439,15 @@ which is the part this project exists to demonstrate.
   `npm run build`. Set env var `VITE_API_URL` to your deployed backend URL.
 - **Backend → Render** (free web service). Root directory: `backend`.
   Build command: `npm install && npm run build`. Start command: `npm start`.
-  Set `GROQ_API_KEY` there if you want live generation in the deployed
-  version, and `JWT_SECRET` to a real random value.
+  Env vars:
+  - `NODE_ENV=production` — required; turns on the `JWT_SECRET` startup check.
+  - `JWT_SECRET` — a real random value
+    (`node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"`).
+  - `DATABASE_PATH` — point at a mounted persistent disk (e.g. `/data/data.db`)
+    so accounts and saved data survive a redeploy; without a disk the free
+    tier wipes the SQLite file on every restart.
+  - `GROQ_API_KEY` (or the `LLM_PROVIDER=bedrock` + AWS vars) for live
+    generation — optional; it falls back to mock data otherwise.
 
   Render's free tier is used over Vercel serverless functions specifically
   because this app holds a long-lived SSE connection per session — serverless

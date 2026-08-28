@@ -32,6 +32,10 @@
   --success-bg: #e3f5ec;
   --rule: #e4e4e7;
   --shimmer-hi: #fff;
+  /* Loading-skeleton fill + sweep — deliberately a clear step darker than
+   * --card so placeholders actually read as "content coming", not blank. */
+  --skel-base: #e3e4e8;
+  --skel-glow: #f1f2f5;
 
   /* Fission's chart palette, included for fidelity even though only
    * chart-2 is actually consumed (via --coral) today. */
@@ -617,6 +621,68 @@ body {
 .skel-circle { width: 42px; height: 42px; border-radius: 50%; flex: none; }
 .skel-thumb { width: 128px; height: 96px; border-radius: var(--radius); flex: none; }
 
+/* Result skeletons — flights / hotels loading state. Shaped to match the
+ * real card so the swap to live data is a crossfade, not a jump. */
+.skel-block { padding: 16px 18px 18px; }
+.skel-stack { display: flex; flex-direction: column; gap: 10px; }
+
+/* one shimmering placeholder block — a moving light band across a fill
+ * that's a clear step darker than the card it sits on */
+.sk {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(100deg, var(--skel-base) 30%, var(--skel-glow) 50%, var(--skel-base) 70%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sk { animation: none; background: var(--skel-base); }
+}
+
+.skel-heading { width: 92px; height: 16px; border-radius: 5px; margin-bottom: 14px; }
+
+.skel-item {
+  display: flex;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  background: var(--card);
+  animation: fadeInUp 0.4s var(--ease) both;
+}
+.skel-mono { width: 40px; height: 40px; border-radius: 50%; flex: none; margin-top: 2px; }
+.skel-photo { width: 112px; height: 92px; border-radius: 9px; flex: none; }
+
+.skel-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px; }
+.skel-line-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.skel-foot { margin-top: auto; padding-top: 2px; }
+.skel-chips { display: flex; gap: 6px; }
+.skel-pill { height: 18px; border-radius: 999px; }
+.skel-btn { width: 62px; height: 30px; border-radius: 8px; }
+
+/* hotels load into a 2-up grid — its skeleton mirrors that: vertical cards,
+ * photo on top, matching .surface-hotels .a2-list below */
+.skel-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.skel-vcard {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  overflow: hidden;
+  animation: fadeInUp 0.4s var(--ease) both;
+}
+.skel-vphoto { width: 100%; height: 178px; }
+.skel-vbody { display: flex; flex-direction: column; gap: 9px; padding: 14px 16px 16px; }
+
+@media (max-width: 720px) {
+  .skel-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .skel-photo { width: 84px; height: 84px; }
+  .skel-item { gap: 10px; }
+}
+
 /* ---------------- Keyframes ---------------- */
 
 @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -744,6 +810,8 @@ body {
   --muted: #a8a8b0;
   --rule: #4a4a55;
   --shimmer-hi: #2e2e36;
+  --skel-base: #34343f;
+  --skel-glow: #43434f;
   --success-bg: #122e24;
   /* Navy gradients (user bubbles, avatars) lifted so they don't disappear
    * into the new slightly-lighter page background. */
@@ -915,6 +983,103 @@ body {
   60%  { opacity: 1; transform: translateX(4px); }
   100% { opacity: 1; transform: translateX(0); }
 }
+
+/* Apps — domain switcher under "+ New chat", one row per agent, the row
+   matching the current conversation lit up. */
+.sidebar-section-apps {
+  margin-top: 2px;
+  margin-bottom: 12px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--rule);
+}
+.app-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 2px 4px 0;
+}
+.app-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  border: 1px solid transparent;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  /* Status indicators, not controls — no pointer, no click. */
+  user-select: none;
+  transition: background var(--dur-med) var(--ease),
+              border-color var(--dur-med) var(--ease),
+              box-shadow var(--dur-med) var(--ease);
+  opacity: 0;
+  transform: translateX(-24px);
+  animation: slideInLeft 0.6s var(--ease) forwards;
+}
+.app-list .app-row:nth-child(1) { animation-delay: 0.08s; }
+.app-list .app-row:nth-child(2) { animation-delay: 0.16s; }
+.app-list .app-row:nth-child(3) { animation-delay: 0.24s; }
+.app-row-active {
+  background: var(--sidebar-accent);
+  border-color: rgba(242, 80, 17, 0.35);
+  box-shadow: var(--shadow-sm);
+}
+.app-row-icon {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--card);
+  border: 1px solid var(--rule);
+  color: var(--muted);
+  transition: background var(--dur-med) var(--ease),
+              border-color var(--dur-med) var(--ease),
+              color var(--dur-med) var(--ease);
+}
+.app-row-active .app-row-icon {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: #fff;
+}
+.app-row-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.app-row-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--ink);
+  transition: color var(--dur-med) var(--ease);
+}
+.app-row-active .app-row-label { color: var(--brass); }
+.app-row-desc {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-row-dot {
+  margin-left: auto;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--brass);
+  opacity: 0;
+  transform: scale(0.3);
+  transition: opacity var(--dur-med) var(--ease), transform var(--dur-med) var(--ease);
+}
+.app-row-active .app-row-dot { opacity: 1; transform: scale(1); }
 
 /* Trending destinations */
 .trending-row {
@@ -1286,6 +1451,64 @@ body {
  * thumbnail-sized landscape crop .a2-img-wrap gives every non-grid list. */
 .surface-records .a2-list-grid .a2-img-wrap,
 .surface-records .a2-list-grid .a2-img-fallback { width: 100%; height: 160px; }
+
+/* ---------------- Hotels: card grid ----------------
+ * The hotels list is authored as wide horizontal rows (image | body | price).
+ * At full chat width that leaves a lot of dead space in the middle — a 2-up
+ * grid of vertical cards (photo on top, then details) reads far better and
+ * matches the doctor-card grid. CSS-only and scoped to .surface-hotels, so
+ * flights and destinations keep their horizontal rows. */
+/* :has() scopes this to the hotels *list* only — the same surface also
+ * renders a room list (room_row) when a hotel is opened, which must keep its
+ * normal full-width rows. */
+.surface-hotels .a2-list:has(> [data-cid="hotel_row"]) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+.surface-hotels .a2-list:has(> [data-cid="hotel_row"]) > * + * { border-top: none; padding-top: 0; margin-top: 0; }
+
+/* each hotel_row Row -> a vertical card */
+.surface-hotels .a2-list > .a2-row[data-cid="hotel_row"] {
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--dur-fast) var(--ease),
+              transform var(--dur-fast) var(--ease),
+              border-color var(--dur-fast) var(--ease);
+}
+.surface-hotels .a2-list > .a2-row[data-cid="hotel_row"]:hover {
+  border-color: var(--brass);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+/* photo: full-bleed across the top of the card */
+.surface-hotels .a2-list > [data-cid="hotel_row"] .a2-img-wrap,
+.surface-hotels .a2-list > [data-cid="hotel_row"] .a2-img-fallback {
+  width: 100%;
+  height: 178px;
+  border-radius: 0;
+}
+
+/* body carries the padding the row used to; loosen its cramped 4px gap */
+.surface-hotels .a2-list [data-cid="hr_body"] {
+  padding: 14px 16px 16px;
+  gap: 9px !important;
+}
+.surface-hotels .a2-list [data-cid="hr_top"] { gap: 12px; }
+.surface-hotels .a2-list [data-cid="hr_price_col"] { flex: none; }
+.surface-hotels .a2-list [data-cid="hr_bottom"] { flex-wrap: wrap; gap: 10px; margin-top: 2px; }
+.surface-hotels .a2-list [data-cid="hr_tags"] { flex-wrap: wrap; }
+.surface-hotels .a2-list [data-cid="hr_btn"] { margin-left: auto; }
+
+@media (max-width: 720px) {
+  .surface-hotels .a2-list { grid-template-columns: 1fr; }
+}
 
 /* ---------------- Finance agent ----------------
  * A compact ledger-style card, never the full chat-bubble width — every

@@ -24,7 +24,7 @@ import {
   type PendingFinance, type CategoryStatus, type GoalSummary, type GoalPlanItem,
   type CashFlowPoint, type RecentExpenseRow,
 } from './orchestrator/sessions';
-import { indexHotels, findHotelByName } from './orchestrator/hotelIndex';
+import { indexHotels, findHotelByName, detectHotelRoomsLookup } from './orchestrator/hotelIndex';
 import {
   flightsSurface, hotelsSurface, roomsSurface, tripSummarySurface, myRecordsSurface, recordDetailSurface,
   destinationsSurface, doctorsSurface, doctorProfileSurface, doctorBookingFormSurface, appointmentConfirmationSurface,
@@ -146,6 +146,38 @@ app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth },
           : `Here's ${doctor.name}'s full profile.`,
       },
     };
+  }
+
+  // "View rooms at <hotel>" — the fixed template the hotel grid's button
+  // synthesizes (see detectHotelRoomsLookup). A direct jump to that hotel's
+  // rooms as a fresh chat turn, not a search — no LLM, same as the checks
+  // above. The rooms card renders with no "← Back to hotels" button, since
+  // there's no list in this turn to go back to.
+  const hotelRooms = detectHotelRoomsLookup(query);
+  if (hotelRooms) {
+    const match = findHotelByName(hotelRooms.hotelName);
+    const session = createSession();
+    if (!match) {
+      return {
+        sessionId: session.id,
+        intent: {
+          intent: 'refine', destination: '', agents: [],
+          summary: `I can't find ${hotelRooms.hotelName} anymore — search for hotels again and I'll pull up its rooms.`,
+        },
+      };
+    }
+    session.directHotel = match.hotel;
+    session.trip.destination = match.destination;
+    // Deliberately intent:'refine' / agents:[] — not 'browse_hotels' — so the
+    // turn is *only* this hotel's rooms card: no weather report, no "flying
+    // in? add flights" cross-sell, none of the trip-planning scaffolding a
+    // real hotels search pulls in. runAgents still fires (it keys off
+    // session.directHotel, not the agents list) and renders roomsSurface.
+    session.pendingIntent = {
+      intent: 'refine', destination: '', agents: [],
+      summary: `Here are the rooms at ${match.hotel.name}, in ${titleCase(match.destination)}.`,
+    };
+    return { sessionId: session.id, intent: session.pendingIntent };
   }
 
   let intent = await parseIntent(query);
@@ -1174,12 +1206,15 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
   const session = getSession(sessionId);
   if (!session) return;
 
-  // A "give me the details of X hotel" query that matched an already-known
-  // hotel — go straight to its rooms instead of running a fresh search.
+  // A "give me the details of X hotel" / "View rooms at X" query that matched
+  // an already-known hotel — go straight to its rooms instead of running a
+  // fresh search. No "← Back to hotels" button: this is its own chat turn,
+  // and the session only holds this one hotel, so there's no list to return
+  // to (that button's backToHotels would rebuild a one-item list).
   if (session.directHotel) {
     session.activeHotelId = session.directHotel.id;
     session.hotelsCache = new Map([[session.directHotel.id, session.directHotel]]);
-    emitAll(sessionId, roomsSurface('hotels', session.directHotel));
+    emitAll(sessionId, roomsSurface('hotels', session.directHotel, undefined, undefined, false));
     return;
   }
 

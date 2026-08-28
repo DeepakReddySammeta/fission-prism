@@ -393,7 +393,7 @@ export interface RoomBooking {
   children: number;
 }
 
-export function roomsSurface(surfaceId: string, hotel: HotelOption, booking?: RoomBooking, recommendedRoomId?: string): Envelope[] {
+export function roomsSurface(surfaceId: string, hotel: HotelOption, booking?: RoomBooking, recommendedRoomId?: string, showBack = true): Envelope[] {
   const byPrice = [...hotel.rooms].sort((a, b) => a.price - b.price);
   const tierOf = new Map(byPrice.map((r, i) => [r.id, i]));
   const withImages = hotel.rooms.map((r) => ({
@@ -428,7 +428,10 @@ export function roomsSurface(surfaceId: string, hotel: HotelOption, booking?: Ro
         surfaceId,
         components: [
           { id: 'root', component: 'Card', child: 'body' },
-          { id: 'body', component: 'Column', gap: 14, children: ['back_row', 'hero_img', 'gallery_row', 'head', 'rating_row', 'rating_breakdown', 'tabs'] },
+          { id: 'body', component: 'Column', gap: 14, children: [...(showBack ? ['back_row'] : []), 'hero_img', 'gallery_row', 'head', 'rating_row', 'rating_breakdown', 'tabs'] },
+          // Only referenced by `body` above when showBack — an unreferenced
+          // component def is simply never rendered, so leaving these in place
+          // for the non-back case is harmless.
           { id: 'back_row', component: 'Row', children: ['back_btn'] },
           { id: 'back_btn', component: 'Button', child: 'back_btn_label', action: { event: { name: 'backToHotels', context: {} } } },
           { id: 'back_btn_label', component: 'Text', text: '← Back to hotels' },
