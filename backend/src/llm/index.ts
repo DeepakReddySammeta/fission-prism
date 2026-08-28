@@ -13,7 +13,7 @@ const backend: CompleteFn | null = !LLM_ENABLED
 
 const providerLabel = LLM_PROVIDER === 'bedrock' ? 'AWS Bedrock' : 'Groq';
 const missingHint = LLM_PROVIDER === 'bedrock'
-  ? 'set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY to turn this on'
+  ? 'set AWS_ACCESS_KEY_ID + AWS_SECRET_ACCESS_KEY (or AWS_USE_IAM_ROLE=true on AWS) to turn this on'
   : 'set GROQ_API_KEY to turn this on';
 
 // Logged once at startup so `npm run dev`'s output alone tells you which mode
