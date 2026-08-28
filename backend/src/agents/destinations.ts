@@ -1,5 +1,5 @@
 import type { DestinationSuggestion } from '../types';
-import { generateJSON } from '../llm/groq';
+import { generateJSON } from '../llm';
 import { LLM_ENABLED } from '../config';
 
 const SYSTEM_PROMPT = `You are a travel inspiration agent for an India-focused trip planner.

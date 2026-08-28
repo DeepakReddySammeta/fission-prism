@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { AuthDialog } from '../auth/AuthDialog';
 import { Button } from '@/components/ui/button';
@@ -53,6 +53,7 @@ function formatDate(iso: string): string {
 
 export default function MyAppointments() {
   const { user, token, ready } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const dateFilter: DateFilter = (searchParams.get('filter') as DateFilter) || 'all';
   const [appointments, setAppointments] = useState<Appointment[] | null>(null);

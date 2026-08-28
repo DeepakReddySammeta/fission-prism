@@ -1,13 +1,18 @@
 # Voyage AI
 
-A conversational trip-planning proof of concept built to showcase the
-**[A2UI protocol](https://google-a2a.github.io/A2A/)**-style pattern: agents
-generate UI as *data* — a stream of `createSurface` / `updateComponents` /
-`updateDataModel` envelopes — and a generic React renderer builds the actual
-interface from that stream. No agent ever sends HTML, JSX, or a UI library
-component; it sends catalog references and data, and the client decides what
-those look like. The LLM can choose *what* to show, never *how it's rendered*
-or *what code runs*.
+A conversational trip-planning proof of concept built to showcase
+**[A2UI](https://a2ui.org/)**: agents generate UI as *data* — a stream of
+`createSurface` / `updateComponents` / `updateDataModel` envelopes (A2UI
+v0.9) — and the official [`@a2ui/react`](https://www.npmjs.com/package/@a2ui/react)
+renderer builds the actual interface from that stream. No agent ever sends
+HTML, JSX, or a UI library component; it sends catalog references and data,
+and the client decides what those look like. The LLM can choose *what* to
+show, never *how it's rendered* or *what code runs*.
+
+The frontend registers a small **custom catalog** with the a2ui renderer —
+Voyage's own component implementations (rendered with the Fission design
+system) plus a few logic functions — so the app keeps its own look while the
+a2ui engine does the binding, templating, action routing and validation.
 
 Runs with **zero cost and zero setup** — every agent falls back to
 deterministic mock data if no Groq key is present. Add a free Groq API key to
@@ -68,8 +73,11 @@ Flights Agent, Hotels Agent  (Groq LLM if GROQ_API_KEY set, else deterministic m
 Trust boundary (validateEnvelope)  ──▶  drops anything off the component/function catalog
    │
    ▼
-SSE stream  ──▶  React renderer (backend/src/types.ts and frontend/src/types.ts
-                  are kept identical by hand — see Project layout below)
+Wire reducer (reduceForWire)  ──▶  createSurface once per surface; updateComponents
+   │                                only carries components whose JSON changed
+   ▼
+SSE stream  ──▶  @a2ui/react MessageProcessor + Voyage's custom catalog
+                  (frontend/src/a2ui/) — the client re-checks the allowlist too
 ```
 
 Weather is deliberately **not** part of this pipeline: it's a plain
@@ -94,7 +102,10 @@ call carries only the raw query text or a bare origin/destination string.
 **Backend:** Fastify, TypeScript, better-sqlite3, the Groq SDK (model
 `openai/gpt-oss-20b`), bcryptjs, jsonwebtoken, google-auth-library.
 
-**Frontend:** React 18, Vite, TypeScript, Tailwind CSS, the
+**Frontend:** React 19, Vite, TypeScript, Tailwind CSS,
+[`@a2ui/react`](https://www.npmjs.com/package/@a2ui/react) +
+[`@a2ui/web_core`](https://www.npmjs.com/package/@a2ui/web_core) (the A2UI
+v0.9 renderer + engine), `zod` (component schemas), the
 [Fission design system](https://fissionhq.github.io/ui-design-system/)
 (button, input, card, badge, dialog, form, select, table, tabs, toast —
 themed with Fission's own default orange palette), react-router-dom,
@@ -102,9 +113,13 @@ react-hook-form, jsPDF.
 
 Chosen for a POC that needs to run on a laptop with `npm install` and
 nothing else: no database server (SQLite), no billing setup for a demo
-(Groq's free tier), and a hand-rolled A2UI renderer small enough that the
-security boundary (the component/function allowlist) is easy to read and
-verify rather than trusting an opaque dependency with it.
+(Groq's free tier). The A2UI rendering is the real published library, driven
+by a **custom catalog** (`frontend/src/a2ui/`) so the app looks the way it
+wants; the security boundary stays legible because it's small and lives in
+two obvious places — `backend/src/orchestrator/trust.ts` (server-side, every
+envelope) and `A2uiRuntime.sanitizeEnvelope` (client-side re-check), and any
+component the catalog doesn't define renders as an inert placeholder, never
+code.
 
 ## Project layout
 
@@ -115,31 +130,39 @@ Two independent apps — not an npm workspace. Each has its own
 backend/
   src/server.ts          every HTTP route: /api/plan, /api/events (SSE), /api/action, auth, saved plans
   src/agents/             intent.ts, flights.ts, hotels.ts, destinations.ts, recommend.ts — one job each
-  src/orchestrator/       sessions.ts (SSE state), envelopes.ts (A2UI UI trees), trust.ts (allowlist)
-  src/llm/groq.ts         the single function every agent calls to talk to Groq
+  src/orchestrator/       sessions.ts (SSE state + reduceForWire delta emit),
+                          envelopes.ts (A2UI UI trees), trust.ts (allowlist)
+  src/llm/                index.ts (generateJSON — the single function every agent calls),
+                          groq.ts / bedrock.ts (interchangeable backends, pick via LLM_PROVIDER)
   src/weather/weather.ts  live Open-Meteo lookup — deliberately outside the agent pipeline
   src/auth/               email/password + Google auth, JWT sessions
   src/db.ts               SQLite (better-sqlite3) — accounts + saved plans, gitignored data.db
-  src/types.ts            A2UI + domain types
+  src/types.ts            A2UI protocol + domain types (the full copy)
 
 frontend/
-  src/a2ui/catalog.tsx    the generic renderer — every surface (flights, hotels, rooms, trip
-                          summary, destinations, saved plans) goes through this one interpreter
-  src/a2ui/store.ts       A2UIStore — per-turn state, consumed via useSyncExternalStore
+  src/a2ui/apis.ts        Zod schema per component — what the a2ui generic binder reads
+  src/a2ui/components.tsx  Voyage's component implementations (rendered with Fission)
+  src/a2ui/functions.ts   logic functions (formatCurrency, formatDuration, required, ...)
+  src/a2ui/catalog.ts     assembles the Catalog handed to @a2ui/react
+  src/a2ui/runtime.ts     A2uiRuntime — wraps MessageProcessor: allowlist re-check,
+                          message log for replay, useSyncExternalStore glue, read helpers
+  src/a2ui/Surface.tsx    <A2uiSurface> inside the Fission card shell
   src/planner/            PlannerContext (conversations/turns), persistence.ts (localStorage)
   src/components/         TripBuilderCard, WeatherCard, Stepper — hand-built, reused across surfaces
   src/components/ui/      Fission design-system primitives, vendored in via the shadcn CLI (see below)
   src/lib/useVoiceSearch.ts  Web Speech API wrapper
   src/shell/              sidebar, recents/pinned, theme toggle
   src/auth/, src/pages/   auth context/dialog, My Plans gallery + detail, My Bookings
-  src/types.ts            the SAME domain types, copied by hand
+  src/types.ts            domain shapes + CATALOG_ID only — A2UI protocol types
+                          now come from @a2ui/web_core
 ```
 
-`types.ts` is intentionally duplicated rather than pulled from a shared
-package. For two small apps this keeps things simple — no build step for a
-third package, no monorepo/workspace symlink resolution to get right. The
-cost: if you change a field in one copy, mirror the same edit in the other by
-hand (both files carry a comment saying so).
+The two `types.ts` files still share their **domain** shapes (`FlightOption`,
+`TripSummary`, ...) by hand-copying rather than a shared package — no build
+step for a third package, no workspace symlinks. If you change a domain field
+in one, mirror it in the other. The A2UI *protocol* types are no longer
+duplicated: the backend builds envelopes against its own copy, the frontend
+gets them from `@a2ui/web_core`.
 
 ## Design system (Fission)
 
@@ -260,21 +283,24 @@ this mode.
 
 ### Enabling live LLM generation (optional)
 
-1. Get a free key at [console.groq.com](https://console.groq.com) (no card
-   required).
-2. In `backend/`, copy the template and fill in your key:
-   ```bash
-   cd backend
-   cp .env.example .env
-   # then edit .env and paste your key after GROQ_API_KEY=
-   ```
-3. Restart the backend (`npm run dev`). The startup log will say
-   `[llm] enabled ... via Groq` instead of `disabled`, and `GET /api/health`
-   will report `{"llm":"groq"}`.
+The agents talk to one of two interchangeable providers, selected by
+`LLM_PROVIDER` in `backend/.env` (`cp .env.example .env` first):
+
+- **`groq`** (default) — get a free key at
+  [console.groq.com](https://console.groq.com) (no card required) and set
+  `GROQ_API_KEY`.
+- **`bedrock`** — a Claude model on AWS Bedrock. Set `LLM_PROVIDER=bedrock`,
+  `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and optionally
+  `BEDROCK_MODEL` (default `us.anthropic.claude-sonnet-5`). Use
+  `AWS_SESSION_TOKEN` too if your credentials are temporary/STS.
+
+Restart the backend (`npm run dev`). The startup log will say
+`[llm] enabled ... via <provider>` instead of `disabled`, and `GET /api/health`
+will report `{"llm":"<provider>","model":"..."}`.
 
 `backend/.env` is already in `.gitignore` — it won't get committed. If a live
-Groq call ever fails for any reason (bad key, rate limit, network), that one
-request falls back to mock data automatically rather than erroring out.
+LLM call ever fails for any reason (bad key/credentials, rate limit, network),
+that one request falls back to mock data automatically rather than erroring out.
 
 ### Accounts, saved plans, and Google sign-in
 
@@ -302,11 +328,17 @@ non-functional button.
 
 - **Agent-generated UI, not agent-generated text.** Flights, hotels, rooms,
   trip summaries, saved-plan lists, and destination suggestions are all
-  different data shapes rendered by the exact same generic interpreter
-  (`a2ui/catalog.tsx`) — none of them is a hand-coded screen.
-- **Structure vs. data separation** — each agent sends `updateComponents`
-  once per surface; selecting a flight/hotel/room only sends
-  `updateDataModel` or a small components patch, never a full re-render.
+  different data shapes rendered by the same `@a2ui/react` engine over one
+  small custom catalog — none of them is a hand-coded screen.
+- **The real renderer.** The client is `@a2ui/react`'s `MessageProcessor` +
+  `A2uiSurface` + generic binder, not a bespoke interpreter — the same code
+  path any A2UI client would use. Voyage only supplies the *catalog*
+  (component implementations + logic functions).
+- **Structure vs. data separation, on the wire.** `reduceForWire`
+  (`orchestrator/sessions.ts`) sends `createSurface` exactly once per
+  surface and, when an action rebuilds a whole surface tree, puts only the
+  components that actually changed on the SSE stream. Pure data changes are
+  a lone `updateDataModel`.
 - **Template-driven lists** — the flights, hotels, and destinations lists
   are each one template component bound to a data array
   (`List.children = { path, componentId }`), not one component per item.
@@ -315,11 +347,16 @@ non-functional button.
   the server routes the action to the right in-memory session state.
 - **A trust boundary that actually runs** — `orchestrator/trust.ts` checks
   every envelope's component kinds and function-call names against a fixed
-  allowlist before it ever reaches the SSE stream, independent of whether
-  the data came from an LLM or a mock generator; the client re-checks the
-  same allowlist again on the way in.
-- **Client-side PDF export** — the trip summary surface is walked directly
-  to build a PDF with `jsPDF`, no server round-trip.
+  allowlist before it reaches the SSE stream, independent of whether the
+  data came from an LLM or a mock generator; `A2uiRuntime` re-checks the
+  catalog on the way in, and any unknown component renders as an inert
+  placeholder rather than executing anything.
+- **Reactive validation** — a `Button`'s `checks` array is evaluated by the
+  binder into `isValid` / `validationErrors`; e.g. "Confirm booking" stays
+  disabled (with a reason on hover) until the lead-guest field is filled.
+- **Client-side PDF export** — the confirmed trip's structured data is
+  fetched (`GET /api/trip/:id`) and turned into a branded multi-section PDF
+  with `jsPDF`, entirely in the browser.
 
 ## Known limitations (this is a POC, on purpose)
 

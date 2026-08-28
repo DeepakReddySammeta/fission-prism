@@ -1,5 +1,5 @@
 import type { ParsedIntent } from '../types';
-import { generateJSON } from '../llm/groq';
+import { generateJSON } from '../llm';
 import { LLM_ENABLED } from '../config';
 import { SPECIALTIES } from '../mock/doctors';
 
@@ -139,6 +139,36 @@ function buildSummary(intent: Pick<ParsedIntent, 'intent' | 'destination' | 'ori
   const nights = intent.durationNights ? ` for ${intent.durationNights} night${intent.durationNights > 1 ? 's' : ''}` : '';
   const origin = intent.origin ? ` from ${titleCase(intent.origin)}` : '';
   return `Planning your trip to ${dest}${origin}${nights} — I've lined up flights and stays for you to compare below.`;
+}
+
+/** Phrases that satisfy the destination regexes structurally ("plan a trip
+ * for a trip", "somewhere nice") or get echoed back by the LLM, but name no
+ * actual place. Anything matching here counts as "no destination given" — the
+ * user is asked to name a city instead of being shown a plan for "A Trip". */
+const NON_PLACE_PATTERN = /^(a|an|the|my|our|your|some|this|that|next)\s+(trip|holiday|vacation|getaway|tour|journey|break|weekend|week|days?|months?|place|city|town|destination|spot)s?$/;
+const NON_PLACE_EXACT = new Set([
+  'trip', 'holiday', 'vacation', 'getaway', 'tour', 'journey', 'break', 'holidays',
+  'travel', 'travelling', 'traveling', 'somewhere', 'anywhere', 'someplace',
+  'me', 'us', 'myself', 'here', 'there', 'now', 'today', 'tomorrow', 'a place',
+]);
+
+/** Normalises a raw regex- or LLM-supplied place phrase, returning undefined
+ * when it's filler rather than a real place name. */
+export function cleanPlace(raw: string | undefined | null): string | undefined {
+  if (!raw) return undefined;
+  const normalized = raw.trim().replace(/\s+/g, ' ');
+  const key = normalized.toLowerCase();
+  if (key.length < 2 || NON_PLACE_EXACT.has(key) || NON_PLACE_PATTERN.test(key)) return undefined;
+  return normalized;
+}
+
+/** The "tell me where you want to go" nudge, shared by the heuristic and LLM
+ * refine paths. Acknowledges an origin city if the user already gave one. */
+function buildRefineSummary(origin?: string | null): string {
+  const o = cleanPlace(origin);
+  return o
+    ? `I've got ${titleCase(o)} as your starting point — which city would you like to travel to?`
+    : 'Which city would you like to plan for? Name a destination — and where you\'re flying from, if you want flights too — e.g. "trip to Goa from Hyderabad".';
 }
 
 /** Best-effort extraction of a clock time the user gave for booking a flight
@@ -542,8 +572,10 @@ function heuristicIntent(query: string): ParsedIntent {
   // The negative lookahead keeps "I want to book a trip somewhere nice" from
   // reading "to book..." as if "book" were a destination — without it, "to"
   // followed by a common verb infinitive gets mistaken for "to <place>" and
-  // swallows the rest of the sentence as a garbage destination string.
-  const toMatch = q.match(/(?:to|in|around)\s+(?!book|plan|go|visit|travel|fly|reserve|stay|explore|see)([a-z\s]+?)(?:\s+for|\s+from|$|,|\.)/);
+  // swallows the rest of the sentence as a garbage destination string. The
+  // trailing \b is load-bearing: without it "(?!go)" also rejects "to Goa",
+  // since "Goa" starts with "go".
+  const toMatch = q.match(/(?:to|in|around)\s+(?!(?:book|plan|go|visit|travel|fly|reserve|stay|explore|see)\b)([a-z\s]+?)(?:\s+for|\s+from|$|,|\.)/);
   // "flights for Shimla" / "hotels for Goa" — colloquial alternative to
   // "to/in/around" that the pattern above doesn't cover. Requires the word
   // after "for" to start with a letter, so "for 3 nights" (a duration
@@ -551,21 +583,24 @@ function heuristicIntent(query: string): ParsedIntent {
   const forMatch = q.match(/\bfor\s+([a-z][a-z\s]*?)(?:\s+for|\s+from|$|,|\.)/);
   const fromMatch = q.match(/from\s+([a-z\s]+?)(?:\s+to|$|,|\.)/);
 
-  // No destination phrase anywhere in the message (e.g. "give me the details
-  // of sunset bay hotel" — that names a hotel, not a city) — asking beats
-  // silently guessing a fallback city and showing results for the wrong place.
-  if (!toMatch && !forMatch) {
+  const destination = cleanPlace(toMatch ? toMatch[1] : forMatch ? forMatch[1] : undefined);
+  const origin = cleanPlace(fromMatch ? fromMatch[1] : undefined);
+
+  // No usable destination in the message — either no "to/for <place>" phrase
+  // at all (e.g. "give me the details of sunset bay hotel" — that names a
+  // hotel, not a city), or only filler where a place should be ("lets plan
+  // for a trip", "book a trip from Delhi"). Asking beats guessing a fallback
+  // city or latching onto "a trip" as if it were a destination.
+  if (!destination) {
     return {
       intent: 'refine',
       destination: '',
+      origin,
       agents: [],
       hotelNameQuery: extractHotelNameQuery(q),
-      summary: "I didn't catch which destination you mean — could you name a city? For example, \"hotels in Goa\" or \"flights to Manali\".",
+      summary: buildRefineSummary(origin),
     };
   }
-
-  const destination = (toMatch ? toMatch[1] : forMatch![1]).trim();
-  const origin = fromMatch ? fromMatch[1].trim() : undefined;
   const checkIn = extractDate(q);
   const flightTargetTime = extractTime(q);
   const flightQuery = extractFlightQuery(q);
@@ -641,6 +676,30 @@ const INTENT_TIMEOUT_MS = 8_000;
 export async function parseIntent(query: string): Promise<ParsedIntent> {
   if (LLM_ENABLED) {
     const result = await generateJSON<ParsedIntent>(SYSTEM_PROMPT, query, INTENT_TIMEOUT_MS);
+
+    // No real place named — either the model said so outright (intent
+    // "refine"), or it echoed filler back as the destination ("a trip",
+    // "the weekend"). Ask for a city rather than planning a trip to nowhere,
+    // and don't fall through to heuristics that might latch onto that same
+    // filler word.
+    const echoedFiller = !!result
+      && result.intent !== 'find_doctor'
+      && !!result.destination
+      && !cleanPlace(result.destination);
+    if (result && (result.intent === 'refine' || echoedFiller)) {
+      console.log(`[intent] LLM → refine (no place named${echoedFiller ? `, echoed filler "${result.destination}"` : ''})`);
+      const q = query.toLowerCase();
+      return {
+        intent: 'refine',
+        destination: '',
+        origin: cleanPlace(result.origin),
+        agents: [],
+        hotelNameQuery: extractHotelNameQuery(q),
+        summary: (result.intent === 'refine' && result.summary?.trim())
+          || buildRefineSummary(result.origin),
+      };
+    }
+
     // find_doctor deliberately has no destination (it's not a travel
     // concept) — the usual "destination must be non-empty" check would
     // otherwise reject every valid find_doctor result and silently fall
@@ -649,6 +708,9 @@ export async function parseIntent(query: string): Promise<ParsedIntent> {
       ? !!result.agents?.length
       : !!(result?.destination && result.agents?.length);
     if (isUsable && result) {
+      // Drop a filler origin ("me", "a trip") so it doesn't pull in the
+      // flights agent or show up in the summary as a starting city.
+      result.origin = cleanPlace(result.origin);
       const normalized = ensureFlightsWhenOriginKnown(result);
       // The regex extractors below run either way, whether or not the LLM
       // is enabled — filling in anything the model's JSON left out is cheap
@@ -666,8 +728,11 @@ export async function parseIntent(query: string): Promise<ParsedIntent> {
         children: normalized.children ?? fallbackParty.children,
         summary: normalized.summary || buildSummary(normalized),
       };
+      console.log(`[intent] LLM → ${merged.intent} (dest="${merged.destination}"${merged.origin ? `, origin="${merged.origin}"` : ''}, agents=[${merged.agents}])`);
       return applyAgentScopeOverride(q, merged);
     }
   }
-  return heuristicIntent(query);
+  const h = heuristicIntent(query);
+  console.log(`[intent] heuristic → ${h.intent} (dest="${h.destination}"${h.origin ? `, origin="${h.origin}"` : ''}, agents=[${h.agents}])`);
+  return h;
 }

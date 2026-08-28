@@ -1,83 +1,21 @@
 /**
- * A2UI protocol + domain types.
+ * Domain types for the trip-planning app.
  *
- * This file is intentionally duplicated in frontend/src/types.ts rather than
- * pulled from a shared package. For a project this size, a synced-by-hand
- * copy is simpler than a monorepo workspace package — no build step, no
- * symlink/bundler interop to get right, one folder per app. The tradeoff:
- * changing this file does NOT automatically update the frontend's copy, so
- * if you add or change a field here, mirror the same edit in
- * frontend/src/types.ts by hand.
+ * The A2UI *protocol* types (envelopes, component defs, the catalog
+ * allowlist) used to live here too; they now come from `@a2ui/web_core`
+ * and the local catalog in `src/a2ui/`, so this file is just the domain
+ * shapes plus the catalog id.
+ *
+ * These domain shapes are still hand-mirrored from `backend/src/types.ts`
+ * (no shared package for two tiny apps) — if you change a field in one copy,
+ * mirror it in the other. The backend copy keeps the full A2UI protocol
+ * section; this one doesn't need it.
  */
 
-export const A2UI_VERSION = 'v0.9.1';
+/** Must equal the `catalogId` the backend puts in every `createSurface`
+ * envelope (`backend/src/types.ts` `CATALOG_ID`) and the id the local
+ * `Catalog` is constructed with (`src/a2ui/catalog.ts`). */
 export const CATALOG_ID = 'https://voyage.ai/catalogs/travel/v1';
-
-/** A value that can be a literal, a data-model binding, or a function call. */
-export type Dynamic<T> =
-  | T
-  | { path: string }
-  | { call: string; args?: Record<string, Dynamic<any>> };
-
-export interface ComponentDef {
-  id: string;
-  component: CatalogComponent;
-  [prop: string]: any;
-}
-
-export type CatalogComponent =
-  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge' | 'Bar' | 'Pie' | 'BarChart' | 'AreaChart' | 'RadarChart' | 'Gauge'
-  | 'Row' | 'Column' | 'List' | 'Card' | 'Tabs' | 'Disclosure'
-  | 'Button' | 'TextField' | 'CheckBox' | 'Slider' | 'ChoicePicker';
-
-export interface CreateSurfaceMsg {
-  surfaceId: string;
-  catalogId: string;
-  theme?: { primaryColor?: string; agentDisplayName?: string; iconUrl?: string };
-  sendDataModel?: boolean;
-}
-
-export interface UpdateComponentsMsg {
-  surfaceId: string;
-  components: ComponentDef[];
-}
-
-export interface UpdateDataModelMsg {
-  surfaceId: string;
-  path?: string;
-  value?: any;
-}
-
-export interface DeleteSurfaceMsg {
-  surfaceId: string;
-}
-
-export type Envelope =
-  | { version: string; createSurface: CreateSurfaceMsg }
-  | { version: string; updateComponents: UpdateComponentsMsg }
-  | { version: string; updateDataModel: UpdateDataModelMsg }
-  | { version: string; deleteSurface: DeleteSurfaceMsg };
-
-/** Client -> server action, fired on Button click etc. */
-export interface ActionPayload {
-  name: string;
-  surfaceId: string;
-  sourceComponentId: string;
-  timestamp: string;
-  context: Record<string, any>;
-}
-
-/** The allowlist. Backend validates against this; frontend enforces it again. */
-export const CATALOG_COMPONENTS: CatalogComponent[] = [
-  'Text', 'Image', 'Icon', 'Divider', 'Badge', 'Bar', 'Pie', 'BarChart', 'AreaChart', 'RadarChart', 'Gauge',
-  'Row', 'Column', 'List', 'Card', 'Tabs', 'Disclosure',
-  'Button', 'TextField', 'CheckBox', 'Slider', 'ChoicePicker',
-];
-
-export const CATALOG_FUNCTIONS = [
-  'formatString', 'formatCurrency', 'formatNumber', 'formatDuration', 'pluralize',
-  'required', 'and', 'or', 'not',
-] as const;
 
 /* ---------------- Domain types (trip planning) ---------------- */
 

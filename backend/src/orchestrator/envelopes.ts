@@ -643,7 +643,7 @@ export function tripSummarySurface(surfaceId: string, trip: TripSummary): Envelo
       {
         id: 'book_btn', component: 'Button', variant: 'primary', child: 'book_btn_label',
         checks: trip.room ? [{
-          call: 'required', args: { value: { path: '/guestName' } },
+          condition: { call: 'required', args: { value: { path: '/guestName' } } },
           message: 'Enter the lead guest’s name above to confirm this booking.',
         }] : [],
         action: { event: { name: 'bookTrip', context: { guestName: { path: '/guestName' } } } },
@@ -1091,10 +1091,10 @@ export function doctorBookingFormSurface(
           {
             id: 'confirm_btn', component: 'Button', variant: 'primary', child: 'confirm_btn_label',
             checks: [
-              { call: 'required', args: { value: { path: '/booking/patientName' } }, message: 'Enter the patient name.' },
-              { call: 'required', args: { value: { path: '/booking/patientPhone' } }, message: 'Enter a contact phone number.' },
-              { call: 'required', args: { value: { path: '/booking/preferredDate' } }, message: 'Pick a preferred date.' },
-              { call: 'required', args: { value: { path: '/booking/preferredTime' } }, message: 'Pick a preferred time.' },
+              { condition: { call: 'required', args: { value: { path: '/booking/patientName' } } }, message: 'Enter the patient name.' },
+              { condition: { call: 'required', args: { value: { path: '/booking/patientPhone' } } }, message: 'Enter a contact phone number.' },
+              { condition: { call: 'required', args: { value: { path: '/booking/preferredDate' } } }, message: 'Pick a preferred date.' },
+              { condition: { call: 'required', args: { value: { path: '/booking/preferredTime' } } }, message: 'Pick a preferred time.' },
             ],
             action: {
               event: {
