@@ -1,4 +1,4 @@
-# Voyage AI
+# Fission Prism
 
 A conversational proof of concept — **trip planning, find-a-doctor, and
 personal finance in one chat** — built to showcase
@@ -11,7 +11,7 @@ and the client decides what those look like. The LLM can choose *what* to
 show, never *how it's rendered* or *what code runs*.
 
 The frontend registers a small **custom catalog** with the a2ui renderer —
-Voyage's own component implementations (rendered with the Fission design
+Fission Prism's own component implementations (rendered with the Fission design
 system) plus a few logic functions — so the app keeps its own look while the
 a2ui engine does the binding, templating, action routing and validation.
 
@@ -184,7 +184,7 @@ backend/
 
 frontend/
   src/a2ui/apis.ts        Zod schema per component — what the a2ui generic binder reads
-  src/a2ui/components.tsx  Voyage's component implementations (rendered with Fission)
+  src/a2ui/components.tsx  Fission Prism's component implementations (rendered with Fission)
   src/a2ui/functions.ts   logic functions (formatCurrency, formatDuration, required, ...)
   src/a2ui/catalog.ts     assembles the Catalog handed to @a2ui/react
   src/a2ui/runtime.ts     A2uiRuntime — wraps MessageProcessor: allowlist re-check,
@@ -303,7 +303,7 @@ the composer, a flights/hotels search, and dark mode before calling it done.
 
 ```bash
 git clone <this-repo-url>
-cd voyage-ai
+cd fission-prism
 npm run install:all    # installs backend/ and frontend/ independently
 ```
 
@@ -392,7 +392,7 @@ non-functional button.
   catalog — none of them is a hand-coded screen.
 - **The real renderer.** The client is `@a2ui/react`'s `MessageProcessor` +
   `A2uiSurface` + generic binder, not a bespoke interpreter — the same code
-  path any A2UI client would use. Voyage only supplies the *catalog*
+  path any A2UI client would use. Fission Prism only supplies the *catalog*
   (component implementations + logic functions).
 - **Structure vs. data separation, on the wire.** `reduceForWire`
   (`orchestrator/sessions.ts`) sends `createSurface` exactly once per

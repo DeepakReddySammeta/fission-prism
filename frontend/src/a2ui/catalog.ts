@@ -1,5 +1,5 @@
 /**
- * The Voyage AI A2UI catalog — the single `Catalog` every surface renders
+ * The Fission Prism A2UI catalog — the single `Catalog` every surface renders
  * through. Its `id` MUST match the `catalogId` the backend puts in every
  * `createSurface` envelope (`backend/src/types.ts` `CATALOG_ID`), or
  * `MessageProcessor` throws "Catalog not found".

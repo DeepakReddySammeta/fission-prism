@@ -1,5 +1,5 @@
 /**
- * Voyage AI's A2UI component catalog — the same visual vocabulary the
+ * Fission Prism's A2UI component catalog — the same visual vocabulary the
  * hand-rolled renderer in the old `catalog.tsx` produced, re-expressed as
  * `@a2ui/react` component implementations so the a2ui engine (data binding,
  * templated child lists, action dispatch, `checks` validation, reactivity)
@@ -319,7 +319,7 @@ const Disclosure = impl(DisclosureApi, ({ props, buildChild }) => {
   if (open) return <>{props.child ? buildChild(props.child) : null}</>;
   return (
     <div className="a2-row">
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>{label}</Button>
+      <Button variant="default" size="sm" className="a2-disclosure-btn" onClick={() => setOpen(true)}>{label}</Button>
     </div>
   );
 });

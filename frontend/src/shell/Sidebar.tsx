@@ -7,7 +7,10 @@ import { newChat } from './plannerBus';
 import { usePlanner } from '../planner/PlannerContext';
 import { APPS, classifyApp, type AppId } from './apps';
 import { Button } from '@/components/ui/button';
-import { PanelLeftClose, PanelLeftOpen, Plane, Stethoscope, Wallet } from 'lucide-react';
+import {
+  PanelLeftClose, PanelLeftOpen, Plane, Stethoscope, Wallet,
+  Cloud, CloudSun, Briefcase, Bookmark, CalendarDays, Star, ChevronRight,
+} from 'lucide-react';
 
 const APP_ICONS: Record<AppId, React.ReactNode> = {
   trip: <Plane size={15} />,
@@ -102,7 +105,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div className="sidebar-heading">
             <div className="brand brand-compact" onClick={goHome} role="button" tabIndex={0}>
               <span className="brand-mark">F</span>
-              <strong className="sidebar-brand-text">Fission</strong>
+              <strong className="sidebar-brand-text">Fission Prism</strong>
             </div>
             <button
               className="sidebar-toggle"
@@ -285,10 +288,25 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   );
 }
 
+function queryIcon(query: string): React.ReactNode {
+  const q = query.toLowerCase();
+  if (q.includes('weather')) return <CloudSun size={15} />;
+  if (q.includes('trip') || q.includes('travel') || q.includes('flight') || q.includes('hotel')) return <Plane size={15} />;
+  if (q.includes('dentist') || q.includes('doctor') || q.includes('health') || q.includes('hospital')) return <Stethoscope size={15} />;
+  if (q.includes('appoint') || q.includes('schedule')) return <CalendarDays size={15} />;
+  if (q.includes('booking') || q.includes('plan')) return <Bookmark size={15} />;
+  if (q.includes('portfolio') || q.includes('invest') || q.includes('finance') || q.includes('stock')) return <Briefcase size={15} />;
+  return <Star size={15} />;
+}
+
 function RecentRow({ entry, onOpen }: { entry: RecentEntry; onOpen: () => void }) {
   return (
-    <div className="recent-row">
-      <button className="recent-query" onClick={onOpen} title={entry.query}>{entry.query}</button>
+    <div className={`recent-row${entry.pinned ? ' recent-row-pinned' : ''}`}>
+      <button className="recent-query" onClick={onOpen} title={entry.query}>
+        <span className="recent-icon" aria-hidden>{queryIcon(entry.query)}</span>
+        <span className="recent-text">{entry.query}</span>
+      </button>
+      <span className="recent-chevron" aria-hidden><ChevronRight size={16} strokeWidth={2} /></span>
       <button className={`pin-btn${entry.pinned ? ' pinned' : ''}`} onClick={() => togglePin(entry.id)} aria-label="Pin">★</button>
       <button className="remove-btn" onClick={() => removeRecent(entry.id)} aria-label="Remove">×</button>
     </div>
