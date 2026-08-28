@@ -5,8 +5,15 @@ import { AuthDialog } from '../auth/AuthDialog';
 import { loadRecents, togglePin, removeRecent, RECENTS_EVENT, type RecentEntry } from './recents';
 import { newChat } from './plannerBus';
 import { usePlanner } from '../planner/PlannerContext';
+import { APPS, classifyApp, type AppId } from './apps';
 import { Button } from '@/components/ui/button';
-import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen, Plane, Stethoscope, Wallet } from 'lucide-react';
+
+const APP_ICONS: Record<AppId, React.ReactNode> = {
+  trip: <Plane size={15} />,
+  health: <Stethoscope size={15} />,
+  finance: <Wallet size={15} />,
+};
 
 const THEME_KEY = 'fission-exp-theme';
 
@@ -19,7 +26,7 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { user, logout } = useAuth();
-  const { plan } = usePlanner();
+  const { plan, turns } = usePlanner();
   const navigate = useNavigate();
   const location = useLocation();
   const [recents, setRecents] = useState<RecentEntry[]>(loadRecents());
@@ -61,6 +68,24 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pinned = recents.filter((r) => r.pinned);
   const unpinned = recents.filter((r) => !r.pinned);
 
+  // Whichever app the most recent turn belongs to. Held in state rather than
+  // recomputed inline so it *sticks*: while a freshly submitted prompt is
+  // still in flight (intent not back yet) a bare query often can't be
+  // classified, and we must keep the previously active app lit instead of
+  // blanking the sidebar until the response lands. It only ever changes to a
+  // new, confidently classified app — or clears when the chat itself is
+  // emptied ("+ New chat").
+  const [activeApp, setActiveApp] = useState<AppId | null>(null);
+  const lastTurn = turns[turns.length - 1];
+
+  useEffect(() => {
+    if (!lastTurn) { setActiveApp(null); return; }
+    const resolved = classifyApp(lastTurn.query, lastTurn.intent);
+    // resolved === null → in-flight prompt or a plain clarification reply:
+    // leave the current highlight exactly as it is.
+    if (resolved) setActiveApp(resolved);
+  }, [lastTurn?.id, lastTurn?.intent, lastTurn?.loading]);
+
   const goHome = () => { navigate('/'); newChat(); };
   const sendQuery = (q: string) => { navigate('/'); plan(q); };
 
@@ -93,6 +118,27 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </div>
 
         {!collapsed && <nav className="sidebar-nav">
+          {/* Apps — the domain the current chat is being handled by lights up */}
+          <div className="sidebar-section sidebar-section-apps">
+            <div className="sidebar-section-label">Apps</div>
+            <div className="app-list">
+              {APPS.map((app) => (
+                <div
+                  key={app.id}
+                  className={`app-row${activeApp === app.id ? ' app-row-active' : ''}`}
+                  title={app.desc}
+                >
+                  <span className="app-row-icon" aria-hidden>{APP_ICONS[app.id]}</span>
+                  <span className="app-row-body">
+                    <span className="app-row-label">{app.label}</span>
+                    <span className="app-row-desc">{app.desc}</span>
+                  </span>
+                  <span className="app-row-dot" aria-hidden />
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Recents */}
           {pinned.length > 0 && (
             <div className="sidebar-section">

@@ -1,9 +1,20 @@
 import Database from 'better-sqlite3';
 import path from 'node:path';
+import fs from 'node:fs';
 
 /** A single local file — no external service, no migration framework needed
- * at this size. Gitignored; created on first run. */
-export const db = new Database(path.join(__dirname, '..', 'data.db'));
+ * at this size. Gitignored; created on first run.
+ *
+ * Path resolution:
+ *   - DATABASE_PATH env var, if set — point this at a mounted persistent
+ *     volume in production (e.g. /data/data.db) so the file survives
+ *     redeploys and restarts.
+ *   - otherwise backend/data.db, next to the compiled source (local dev).
+ * The containing directory is created if it doesn't exist. */
+const dbPath = process.env.DATABASE_PATH || path.join(__dirname, '..', 'data.db');
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+
+export const db = new Database(dbPath);
 
 db.pragma('journal_mode = WAL');
 

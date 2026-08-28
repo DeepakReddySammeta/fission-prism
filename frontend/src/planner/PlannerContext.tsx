@@ -10,7 +10,11 @@ const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
 export interface Intent {
   destination: string;
   origin?: string;
-  agents: Array<'flights' | 'hotels'>;
+  /** The backend's own classification of the request — used by the sidebar
+   * to light up the matching "app". 'refine' also covers finance / my-records
+   * / appointments replies, which carry no distinguishing agent of their own. */
+  intent?: 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'find_doctor' | 'explore_destinations';
+  agents: Array<'flights' | 'hotels' | 'health'>;
   summary?: string;
   /** True when the query used booking language ("book...") — the combined
    * flight+room recommendation card only applies when this is set, so the

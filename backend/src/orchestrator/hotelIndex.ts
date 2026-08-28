@@ -39,3 +39,15 @@ export function findHotelByName(query: string): HotelIndexEntry | undefined {
     return name.includes(q) || q.includes(name);
   });
 }
+
+/**
+ * The fixed "View rooms at <hotel name>" phrasing the frontend synthesizes
+ * for the hotel grid's "View rooms" button. Matched here, before parseIntent,
+ * so the LLM never gets a chance to read the hotel name as a destination —
+ * same "template App.tsx emits, deterministic lookup, no LLM" contract as
+ * detectDoctorLookup / detectMyRecordsIntent.
+ */
+export function detectHotelRoomsLookup(query: string): { hotelName: string } | undefined {
+  const m = query.trim().match(/^view rooms at\s+(.+?)[.?!]*$/i);
+  return m ? { hotelName: m[1].trim() } : undefined;
+}

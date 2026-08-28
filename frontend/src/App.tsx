@@ -41,19 +41,28 @@ const EXAMPLES = [
 ];
 
 
+/** Loading placeholders that mirror the real flight/hotel card anatomy —
+ * same panel shape, thumbnail, and content rows the live result will fill
+ * in — so the swap to real data is a fade, not a layout jump. */
 function FlightSkeleton() {
   return (
-    <div className="section-card">
-      <div className="a2-h2 skel-line skel-w-140" />
-      <div className="a2-list">
+    <div className="section-card skel-block" aria-hidden>
+      <div className="sk skel-heading" />
+      <div className="skel-stack">
         {[0, 1, 2].map((i) => (
-          <div className="skel-row" key={i} style={{ animationDelay: `${i * 80}ms` }}>
-            <div className="skel-circle" />
-            <div className="skel-col">
-              <div className="skel-line skel-w-160" />
-              <div className="skel-line skel-w-220" />
+          <div className="skel-item" key={i} style={{ animationDelay: `${i * 90}ms` }}>
+            <div className="sk skel-mono" />
+            <div className="skel-body">
+              <div className="skel-line-row">
+                <span className="sk" style={{ width: '38%', height: 13 }} />
+                <span className="sk" style={{ width: 56, height: 13 }} />
+              </div>
+              <div className="skel-line-row">
+                <span className="sk" style={{ width: '52%', height: 11 }} />
+                <span className="sk skel-pill" style={{ width: 50 }} />
+              </div>
+              <span className="sk" style={{ width: '30%', height: 10 }} />
             </div>
-            <div className="skel-line skel-w-80" />
           </div>
         ))}
       </div>
@@ -63,16 +72,26 @@ function FlightSkeleton() {
 
 function HotelSkeleton() {
   return (
-    <div className="section-card">
-      <div className="a2-h2 skel-line skel-w-120" />
-      <div className="a2-list">
-        {[0, 1, 2].map((i) => (
-          <div className="skel-row" key={i} style={{ animationDelay: `${i * 80}ms` }}>
-            <div className="skel-thumb" />
-            <div className="skel-col">
-              <div className="skel-line skel-w-180" />
-              <div className="skel-line skel-w-120" />
-              <div className="skel-line skel-w-100" />
+    <div className="section-card skel-block" aria-hidden>
+      <div className="sk skel-heading" />
+      <div className="skel-grid">
+        {[0, 1, 2, 3].map((i) => (
+          <div className="skel-vcard" key={i} style={{ animationDelay: `${i * 80}ms` }}>
+            <div className="sk skel-vphoto" />
+            <div className="skel-vbody">
+              <div className="skel-line-row">
+                <span className="sk" style={{ width: '55%', height: 14 }} />
+                <span className="sk" style={{ width: 48, height: 13 }} />
+              </div>
+              <span className="sk" style={{ width: '34%', height: 11 }} />
+              <div className="skel-chips">
+                <span className="sk skel-pill" style={{ width: 46 }} />
+                <span className="sk skel-pill" style={{ width: 88 }} />
+              </div>
+              <div className="skel-line-row skel-foot">
+                <span className="sk" style={{ width: 68, height: 14 }} />
+                <span className="sk skel-btn" />
+              </div>
             </div>
           </div>
         ))}
@@ -212,6 +231,19 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
         // actually types, so there's no ambiguity to resolve.
         const name = String(action.context.name || '').trim();
         if (name) plan(action.name === 'startDoctorBooking' ? `Book an appointment with ${name}` : `View profile for ${name}`);
+        return;
+      }
+      if (action.name === 'selectHotel') {
+        // Same fresh-turn pattern as viewDoctorProfile above — a real new
+        // exchange, not this grid card swapping to a rooms card in place.
+        // The exact "View rooms at <name>" phrasing is matched by
+        // detectHotelRoomsLookup on the backend (before the LLM, so the
+        // hotel name is never read as a destination); it jumps straight to
+        // that hotel's rooms with no "← Back to hotels" button, since a
+        // fresh turn has no list above it to go back to.
+        const hotels: any[] = surfaceData(runtime.getSurface('hotels'), '/hotels') || [];
+        const hotel = hotels.find((h) => String(h.id) === String(action.context.hotelId));
+        if (hotel?.name) plan(`View rooms at ${hotel.name}`);
         return;
       }
       if (!sessionId) return;
@@ -371,6 +403,14 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   const expectedAgents = intent?.agents || [];
   const flightsPending = expectedAgents.includes('flights') && !(flightsSurface && componentCount(flightsSurface) > 0);
   const hotelsPending = expectedAgents.includes('hotels') && !(hotelsSurface && componentCount(hotelsSurface) > 0);
+  // When a trip expects BOTH flights and hotels, the two agents stream back
+  // independently and hotels often wins the race. Rendering a full hotels
+  // list above a still-loading flights skeleton strands that skeleton in the
+  // middle looking blank — so hold the hotels section (skeleton and all)
+  // until flights have actually rendered, keeping the order flights → hotels.
+  const bothExpected = expectedAgents.includes('flights') && expectedAgents.includes('hotels');
+  const flightsRendered = !!flightsSurface && componentCount(flightsSurface) > 0;
+  const holdHotelsForFlights = bothExpected && !flightsRendered;
   // Weather is a live, real-world reading tied to an actual trip — it should
   // never appear for a bare inspiration query ("best places to visit...")
   // or any other non-booking intent, only once flights/hotels are genuinely
@@ -685,14 +725,14 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
             </div>
           )}
 
-          {(hotelsPending || componentCount(hotelsSurface) > 0) && (
+          {(hotelsPending || holdHotelsForFlights || componentCount(hotelsSurface) > 0) && (
             // Keyed by which "shape" of the hotels surface this is — the
             // hotel list and a single hotel's room view share the same
             // surfaceId, so without a key change here React would just patch
             // the existing DOM in place and the whole list-to-detail swap
             // would happen with no transition at all.
-            <div className="reveal" key={hotelsPending ? 'pending' : hasComponent(hotelsSurface, 'room_list') ? 'rooms' : 'list'}>
-              {hotelsPending ? <HotelSkeleton /> : (
+            <div className="reveal" key={(hotelsPending || holdHotelsForFlights) ? 'pending' : hasComponent(hotelsSurface, 'room_list') ? 'rooms' : 'list'}>
+              {(hotelsPending || holdHotelsForFlights) ? <HotelSkeleton /> : (
                 <Surface surface={hotelsSurface!} className="surface-hotels" />
               )}
             </div>
