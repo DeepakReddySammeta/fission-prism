@@ -1,0 +1,58 @@
+# Local, production-like run of both apps.
+#   cp .env.example .env   # then fill in JWT_SECRET (and a GROQ key if you want live LLM)
+#   docker compose up --build
+#
+# Frontend: http://localhost:8080
+# Backend:  http://localhost:8787   (also called directly from the browser)
+
+services:
+  backend:
+    build:
+      context: ./backend
+    environment:
+      NODE_ENV: production
+      PORT: 8787
+      DATABASE_PATH: /data/data.db
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env — the server refuses to start in production without it}
+      LLM_PROVIDER: ${LLM_PROVIDER:-groq}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-openai/gpt-oss-20b}
+      # Only read when LLM_PROVIDER=bedrock:
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      BEDROCK_MODEL: ${BEDROCK_MODEL:-us.anthropic.claude-haiku-4-5-20251001-v1:0}
+      LLM_TIMEOUT_SCALE: ${LLM_TIMEOUT_SCALE:-2}
+    ports:
+      - "8787:8787"
+    volumes:
+      - voyage-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://localhost:8787/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the JS at build time. Must be reachable from the user's
+        # browser, so it's the host-published backend port, not "backend".
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:8787}
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  voyage-data:
