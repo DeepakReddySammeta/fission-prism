@@ -1698,5 +1698,5 @@ app.delete<{ Params: { id: string } }>('/api/plans/:id', { preHandler: requireAu
 });
 
 app.listen({ port: PORT, host: '0.0.0.0' }).then(() => {
-  console.log(`Voyage AI backend listening on :${PORT} (${LLM_ENABLED ? `${LLM_PROVIDER} LLM enabled — ${LLM_MODEL}` : 'mock data mode — configure an LLM provider to enable live generation'})`);
+  console.log(`Fission Prism backend listening on :${PORT} (${LLM_ENABLED ? `${LLM_PROVIDER} LLM enabled — ${LLM_MODEL}` : 'mock data mode — configure an LLM provider to enable live generation'})`);
 });

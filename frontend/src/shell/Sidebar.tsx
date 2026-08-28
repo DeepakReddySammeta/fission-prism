@@ -105,7 +105,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           <div className="sidebar-heading">
             <div className="brand brand-compact" onClick={goHome} role="button" tabIndex={0}>
               <span className="brand-mark">F</span>
-              <strong className="sidebar-brand-text">Fission</strong>
+              <strong className="sidebar-brand-text">Fission Prism</strong>
             </div>
             <button
               className="sidebar-toggle"

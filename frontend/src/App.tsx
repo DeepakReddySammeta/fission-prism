@@ -843,7 +843,7 @@ export default function App() {
               <div className="brand">
                 <span className="brand-mark">F</span>
                 <div>
-                  <h1>Fission Experience Platform</h1>
+                  <h1>Fission Prism</h1>
                   <p className="brand-tagline">Travel, health & finance — all in one place</p>
                 </div>
               </div>
