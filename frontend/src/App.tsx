@@ -17,6 +17,7 @@ import { useVoiceSearch } from '@/lib/useVoiceSearch';
 import {
   Plane, Hotel, Stethoscope, HeartPulse,
   Wallet, TrendingUp, MapPin, Mic,
+  CloudSun,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
@@ -30,13 +31,12 @@ interface QuickAction {
 
 const FEATURED_ACTIONS: QuickAction[] = [
   { icon: <TrendingUp size={18} />, label: 'Give me my portfolio', description: 'Portfolio overview & tips', query: 'Give me my portfolio' },
-  { icon: <MapPin size={18} />, label: "Let's plan for a trip", description: 'Plan your next getaway', query: "Let's plan for a trip" },
+  { icon: <CloudSun size={18} />, label: "Show me weather in Hyderabad", description: 'Current weather & forecast', query: "Show me weather in Hyderabad" },
   { icon: <HeartPulse size={18} />, label: 'My appointments', description: 'Upcoming & past visits', query: 'My upcoming appointments' },
 ];
 
 const EXAMPLES = [
   { icon: '+', text: 'Find a dentist near me' },
-  { icon: '+', text: 'Show me weather in Hyderabad' },
   { icon: '+', text: 'Show my bookings' },
 ];
 
