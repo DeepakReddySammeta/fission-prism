@@ -18,10 +18,10 @@ const missingHint = LLM_PROVIDER === 'bedrock'
 
 // Logged once at startup so `npm run dev`'s output alone tells you which mode
 // a session ran in, without needing to trigger a request first.
-console.log(
-  `[llm] ${LLM_ENABLED ? 'enabled' : `disabled — ${missingHint}`} ` +
-  `— model=${LLM_MODEL} via ${providerLabel}`,
-);
+// console.log(
+//   `[llm] ${LLM_ENABLED ? 'enabled' : `disabled — ${missingHint}`} ` +
+//   `— model=${LLM_MODEL} via ${providerLabel}`,
+// );
 
 let callCount = 0;
 
@@ -51,30 +51,30 @@ export async function generateJSON<T>(instructions: string, userContent: string,
   const key = cacheKey(instructions, userContent);
   const label = userContent.slice(0, 60).replace(/\s+/g, ' ');
   if (cache.has(key)) {
-    console.log(`[llm] cache hit (${providerLabel} ${LLM_MODEL}) for "${label}"`);
+    // console.log(`[llm] cache hit (${providerLabel} ${LLM_MODEL}) for "${label}"`);
     return cache.get(key) as T;
   }
   const callId = ++callCount;
   const started = Date.now();
   const effectiveTimeout = Math.round(timeoutMs * LLM_TIMEOUT_SCALE);
-  console.log(`[llm] #${callId} → requesting via ${providerLabel} — model=${LLM_MODEL}, timeout=${effectiveTimeout}ms for "${label}"`);
+  // console.log(`[llm] #${callId} → requesting via ${providerLabel} — model=${LLM_MODEL}, timeout=${effectiveTimeout}ms for "${label}"`);
   try {
     const { text, promptTokens, completionTokens } = await backend(instructions, userContent, effectiveTimeout);
     const ms = Date.now() - started;
     if (!text) {
-      console.warn(`[llm] #${callId} ← empty response from ${providerLabel} (${LLM_MODEL}) after ${ms}ms`);
+      // console.warn(`[llm] #${callId} ← empty response from ${providerLabel} (${LLM_MODEL}) after ${ms}ms`);
       return null;
     }
     const parsed = JSON.parse(text) as T;
     cache.set(key, parsed);
-    console.log(
-      `[llm] #${callId} ← live response from ${providerLabel} (${LLM_MODEL}) in ${ms}ms ` +
-      `(${promptTokens ?? '?'} in / ${completionTokens ?? '?'} out tokens)`,
-    );
+    // console.log(
+    //   `[llm] #${callId} ← live response from ${providerLabel} (${LLM_MODEL}) in ${ms}ms ` +
+    //   `(${promptTokens ?? '?'} in / ${completionTokens ?? '?'} out tokens)`,
+    // );
     return parsed;
   } catch (err) {
     const ms = Date.now() - started;
-    console.warn(`[llm] #${callId} ← ${providerLabel} (${LLM_MODEL}) generation failed after ${ms}ms: ${(err as Error).message}`);
+    // console.warn(`[llm] #${callId} ← ${providerLabel} (${LLM_MODEL}) generation failed after ${ms}ms: ${(err as Error).message}`);
     return null;
   }
 }

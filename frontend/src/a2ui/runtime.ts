@@ -60,7 +60,7 @@ export class A2uiRuntime {
         this.processor.processMessages([msg as any]);
       } catch (err) {
         // A single malformed envelope shouldn't kill the whole SSE stream.
-        console.error('[a2ui] dropped envelope', err, msg);
+        // console.error('[a2ui] dropped envelope', err, msg);
       }
     }
     this.touch();
@@ -104,7 +104,7 @@ function sanitizeEnvelope(msg: A2uiMessage): A2uiMessage | null {
   if (uc && Array.isArray(uc.components)) {
     const kept = uc.components.filter((c: any) => {
       if (ALLOWED_COMPONENTS.has(c?.component)) return true;
-      console.warn('[a2ui] dropped off-catalog component', c?.component);
+      //  console.warn('[a2ui] dropped off-catalog component', c?.component);
       return false;
     });
     if (kept.length !== uc.components.length) {
