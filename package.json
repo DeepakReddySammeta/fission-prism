@@ -1,5 +1,5 @@
 {
-  "name": "voyage-ai",
+  "name": "fission-prism",
   "private": true,
   "version": "1.0.0",
   "description": "Two independent apps, not an npm workspace: backend/ and frontend/ each manage their own node_modules. These scripts are just shortcuts.",

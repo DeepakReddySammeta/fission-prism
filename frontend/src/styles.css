@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&family=Libre+Baskerville:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -7,7 +7,7 @@
 :root {
   /* Fission's own default ("fission"/orange) brand theme — no client
    * override layer anymore; these are Fission's literal published values
-   * (design-system site, :root[data-theme=fission]), not Voyage's own
+  * (design-system site, :root[data-theme=fission]), not Fission Prism's own
    * picks. --navy/--brass/etc. are kept as the variable *names* our own
    * hand-authored CSS already references throughout this file — only the
    * values moved to Fission's palette, so nothing downstream needed to
@@ -47,6 +47,7 @@
   --chart-6: #f43f5e;
 
   --serif: 'Fraunces', Georgia, serif;
+  --brand-serif: 'Libre Baskerville', Georgia, serif;
   --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
 
@@ -72,7 +73,7 @@
   --dur: 0.32s;
 
   /* ---- Fission/shadcn-standard tokens. Previously these mapped Fission's
-   * naming onto a separate custom Voyage palette; now that the app runs
+  * naming onto a separate custom Fission Prism palette; now that the app runs
    * Fission's own theme directly, they just alias straight onto the names
    * above, which already hold Fission's real values. ---- */
   --color-brand: var(--brass);
@@ -196,7 +197,7 @@ body {
   transition: transform var(--dur-fast) var(--ease);
 }
 .brand:hover .brand-mark { transform: scale(1.05) rotate(-2deg); }
-.brand h1 { margin: 0; font-family: var(--serif); font-weight: 700; font-size: 32px; letter-spacing: -0.02em; color: var(--heading); line-height: 1.15; }
+.brand h1 { margin: 0; font-family: var(--brand-serif); font-weight: 700; font-size: 32px; letter-spacing: -0.02em; color: var(--heading); line-height: 1.15; }
 .brand .brand-tagline { margin: 6px 0 0; font-size: 15px; color: var(--muted); font-weight: 400; }
 
 .query-form {
@@ -882,7 +883,7 @@ body {
   animation: slideInLeft 0.7s var(--ease) forwards;
   animation-delay: 0.02s;
 }
-.brand-compact strong { font-family: var(--serif); font-size: 16px; color: var(--heading); }
+.brand-compact strong { font-family: var(--brand-serif); font-size: 16px; color: var(--heading); }
 .sidebar-toggle {
   flex: none; width: 32px; height: 32px; display: grid; place-items: center;
   border: 1px solid var(--rule); border-radius: var(--radius-sm);

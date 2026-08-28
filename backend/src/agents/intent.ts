@@ -687,7 +687,6 @@ export async function parseIntent(query: string): Promise<ParsedIntent> {
       && !!result.destination
       && !cleanPlace(result.destination);
     if (result && (result.intent === 'refine' || echoedFiller)) {
-      console.log(`[intent] LLM → refine (no place named${echoedFiller ? `, echoed filler "${result.destination}"` : ''})`);
       const q = query.toLowerCase();
       return {
         intent: 'refine',
@@ -728,11 +727,9 @@ export async function parseIntent(query: string): Promise<ParsedIntent> {
         children: normalized.children ?? fallbackParty.children,
         summary: normalized.summary || buildSummary(normalized),
       };
-      console.log(`[intent] LLM → ${merged.intent} (dest="${merged.destination}"${merged.origin ? `, origin="${merged.origin}"` : ''}, agents=[${merged.agents}])`);
       return applyAgentScopeOverride(q, merged);
     }
   }
   const h = heuristicIntent(query);
-  console.log(`[intent] heuristic → ${h.intent} (dest="${h.destination}"${h.origin ? `, origin="${h.origin}"` : ''}, agents=[${h.agents}])`);
   return h;
 }

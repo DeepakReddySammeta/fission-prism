@@ -96,7 +96,7 @@ export async function downloadTripPdf(sessionId: string, apiBase: string) {
   doc.rect(0, 34, pageWidth, 2, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(19);
-  doc.text('Fission', margin, 17);
+  doc.text('Fission Prism', margin, 17);
   doc.setFontSize(10);
   doc.setTextColor(175, 221, 229);
   doc.text('Trip Summary', margin, 25);
@@ -263,7 +263,7 @@ export async function downloadTripPdf(sessionId: string, apiBase: string) {
   doc.line(margin, pageHeight - 18, pageWidth - margin, pageHeight - 18);
   doc.setFontSize(9);
   doc.setTextColor(92, 125, 129);
-  doc.text('Thank you for planning with Fission.', margin, pageHeight - 11);
+  doc.text('Thank you for planning with Fission Prism.', margin, pageHeight - 11);
 
-  doc.save('fission-trip.pdf');
+  doc.save('fission-prism-trip.pdf');
 }

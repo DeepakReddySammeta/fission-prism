@@ -286,7 +286,6 @@ export function emit(id: string, envelope: Envelope) {
   if (!s) return;
   const check = validateEnvelope(envelope);
   if (!check.ok) {
-    console.warn(`[trust] dropped envelope on session ${id}: ${check.reason}`);
     return;
   }
   const reduced = reduceForWire(s, envelope);

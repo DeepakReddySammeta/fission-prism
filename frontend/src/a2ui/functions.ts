@@ -1,5 +1,5 @@
 /**
- * A2UI logic functions for the Voyage AI catalog.
+ * A2UI logic functions for the Fission Prism catalog.
  *
  * `required` / `and` / `or` / `not` / `formatString` / `formatNumber` /
  * `pluralize` are reused from `@a2ui/web_core`'s `BASIC_FUNCTIONS` as-is.
