@@ -7,6 +7,14 @@ import { saveConversation, loadConversation } from './persistence';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
 
+// An unclosed EventSource holds one HTTP/1.1 connection for the life of the
+// app, and browsers allow only ~6 per host — so past a handful of searches
+// every new request (even the plain POST /api/plan) stalls forever with no
+// free socket. Keep only the most-recent streams open; evicting an older
+// turn's stream still lets its action POSTs land, it just stops re-rendering
+// that turn live.
+const MAX_LIVE_STREAMS = 4;
+
 export interface Intent {
   destination: string;
   origin?: string;
@@ -75,6 +83,18 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Conversation[]>([{ id: firstIdRef.current, turns: [] }]);
   const [activeId, setActiveId] = useState<string>(firstIdRef.current);
   const esMapRef = useRef<Map<string, EventSource>>(new Map());
+
+  // Register a turn's SSE stream, closing the oldest ones once we're over the
+  // browser's per-host connection budget (see MAX_LIVE_STREAMS above). Map
+  // iteration order is insertion order, so the first key is always the oldest.
+  const trackStream = useCallback((key: string, es: EventSource) => {
+    esMapRef.current.set(key, es);
+    while (esMapRef.current.size > MAX_LIVE_STREAMS) {
+      const oldest = esMapRef.current.keys().next().value as string;
+      esMapRef.current.get(oldest)?.close();
+      esMapRef.current.delete(oldest);
+    }
+  }, []);
   // AuthProvider is an ancestor of this provider (see main.tsx), so this is
   // safe to read directly — needed so a chat-typed "my plans"/"my bookings"
   // query can be answered for the right account instead of always looking
@@ -134,12 +154,12 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     if (!parsedIntent?.agents?.length) updateTurn(id, { loading: false });
 
     const es = new EventSource(`${API}/api/events/${sid}`);
-    esMapRef.current.set(id, es);
+    trackStream(id, es);
     es.addEventListener('a2ui', (e: MessageEvent) => {
       runtime.processMessages([JSON.parse(e.data)]);
       updateTurn(id, { loading: false });
     });
-  }, [activeId, updateTurn, token]);
+  }, [activeId, updateTurn, token, trackStream]);
 
   // "+ New chat" — the current conversation (if it actually has anything in
   // it) stays exactly as it is, reachable again from Recents; a truly empty
@@ -170,7 +190,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
         // subscribe, so this is purely "keep listening," never a re-answer.
         if (t.sessionId) {
           const es = new EventSource(`${API}/api/events/${t.sessionId}`);
-          esMapRef.current.set(t.id, es);
+          trackStream(t.id, es);
           es.addEventListener('a2ui', (e: MessageEvent) => {
             runtime.processMessages([JSON.parse(e.data)]);
             updateTurn(t.id, { loading: false });
@@ -191,7 +211,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     setConversations((prev) => [...prev, { id, turns: [] }]);
     setActiveId(id);
     plan(fallbackQuery, id);
-  }, [conversations, plan, updateTurn]);
+  }, [conversations, plan, updateTurn, trackStream]);
 
   useEffect(() => {
     const onNewChat = () => startNewChat();

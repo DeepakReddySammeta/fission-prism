@@ -1,0 +1,12 @@
+node_modules
+dist
+*.tsbuildinfo
+.env
+.env.*
+data.db
+data.db-shm
+data.db-wal
+.DS_Store
+npm-debug.log*
+Dockerfile
+.dockerignore

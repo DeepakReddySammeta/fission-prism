@@ -27,8 +27,12 @@ export const AWS_ACCESS_KEY_ID = process.env.AWS_ACCESS_KEY_ID || '';
 export const AWS_SECRET_ACCESS_KEY = process.env.AWS_SECRET_ACCESS_KEY || '';
 export const AWS_SESSION_TOKEN = process.env.AWS_SESSION_TOKEN || '';
 export const AWS_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
-/** A Bedrock inference-profile / model id, e.g. 'us.anthropic.claude-sonnet-5'. */
-export const BEDROCK_MODEL = process.env.BEDROCK_MODEL || 'us.anthropic.claude-sonnet-5';
+/** A Bedrock inference-profile / model id. Claude Haiku 4.5 is the default:
+ * on this app's structured-JSON prompts it runs ~2-4x faster than Sonnet at
+ * comparable quality, which keeps the "Thinking…" wait short. Override with
+ * BEDROCK_MODEL for Sonnet ('us.anthropic.claude-sonnet-5') or Nova. */
+export const BEDROCK_MODEL =
+  process.env.BEDROCK_MODEL || 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
 /** True when the active provider has what it needs. Every agent falls back to
  * deterministic mock data when this is false, so the whole app runs with zero
@@ -44,12 +48,13 @@ export const LLM_MODEL = LLM_PROVIDER === 'bedrock' ? BEDROCK_MODEL : GROQ_MODEL
 /**
  * Multiplier applied to every agent's per-call LLM timeout. The agent
  * timeouts (8–15s) were tuned for Groq's sub-3s inference; Claude on Bedrock
- * routinely needs 15–30s for the bulk-JSON prompts (6 hotels × 5 rooms), so
- * without this every Bedrock call times out and falls back to mock data.
- * Override with LLM_TIMEOUT_SCALE if your region/model is faster or slower.
+ * needs longer for the bulk-JSON prompts (6 hotels × 5 rooms), so without a
+ * bump every Bedrock call times out and falls back to mock data. Haiku 4.5
+ * (the default model) is fast enough at 2×; raise it for Sonnet or a slow
+ * region, lower it for a snappier fall-through to mock data.
  */
 export const LLM_TIMEOUT_SCALE = Number(
-  process.env.LLM_TIMEOUT_SCALE || (LLM_PROVIDER === 'bedrock' ? 3 : 1),
+  process.env.LLM_TIMEOUT_SCALE || (LLM_PROVIDER === 'bedrock' ? 2 : 1),
 );
 
 /** POC-only fallback so auth works with zero setup. Set a real secret before
