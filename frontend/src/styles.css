@@ -519,6 +519,19 @@ body {
 }
 .a2-choice-active { background: var(--brass); border-color: var(--brass); color: #fff; }
 
+/* Disclosure "Show More" button — primary by default, lighter on hover */
+.a2-disclosure-btn {
+  transition: background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.a2-disclosure-btn:hover {
+  background-color: var(--color-brand-hover) !important;
+  border-color: var(--color-brand-hover) !important;
+  box-shadow: 0 4px 12px rgba(242, 80, 17, 0.18);
+}
+.dark .a2-disclosure-btn:hover {
+  box-shadow: 0 4px 12px rgba(242, 80, 17, 0.25);
+}
+
 /* Selected-flight detail card */
 .flight-detail-card {
   background: var(--card); border: 1px solid var(--rule); border-radius: var(--radius-lg);
@@ -798,13 +811,13 @@ body {
    * <input type="date"> calendar popup, scrollbars, etc. — instead of
    * always rendering them light regardless of the page's own theme. */
   color-scheme: dark;
-  /* Lightened dark-mode values — previously almost-black (#09090b) made
-   * everything feel too heavy and crushed shadows. These warmer, slightly
-   * lifted tones keep contrast without the "pitch black" fatigue. */
+  /* Further lifted dark-mode values — the previous palette (#121216 page bg)
+   * still felt too heavy and "crushed". These charcoal tones are ~8-10%
+   * lighter, giving surfaces room to breathe without losing the dark vibe. */
   --heading: #f5f5f7;
-  --paper: #121216;
-  --paper-dim: #2a2a32;
-  --card: #1e1e24;
+  --paper: #1c1c24;
+  --paper-dim: #32323c;
+  --card: #252530;
   --sidebar-chip: rgba(242, 80, 17, 0.16);
   --ink: #e8e8ec;
   --muted: #a8a8b0;
@@ -812,11 +825,15 @@ body {
   --shimmer-hi: #2e2e36;
   --skel-base: #34343f;
   --skel-glow: #43434f;
+  --ink: #eaeaf0;
+  --muted: #b0b0b8;
+  --rule: #555560;
+  --shimmer-hi: #3a3a44;
   --success-bg: #122e24;
   /* Navy gradients (user bubbles, avatars) lifted so they don't disappear
-   * into the new slightly-lighter page background. */
-  --navy: #252940;
-  --navy-deep: #131521;
+   * into the slightly-lighter page background. */
+  --navy: #2d3150;
+  --navy-deep: #1a1d2e;
 }
 .dark body {
   background: radial-gradient(1200px 480px at 50% -160px, rgba(242, 80, 17, 0.10), transparent 60%), var(--paper);
@@ -894,10 +911,23 @@ body {
 }
 .sidebar-nav::-webkit-scrollbar { display: none; }
 
-.sidebar-section { margin-top: 6px; }
+.sidebar-section { margin-top: 10px; }
 .sidebar-section-label {
-  font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
-  color: var(--muted); padding: 6px 10px 4px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--heading); padding: 8px 10px 6px;
+  display: flex; align-items: center; gap: 8px;
+}
+.sidebar-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(to right, var(--rule), transparent);
+}
+.sidebar-section-label::before {
+  content: '';
+  width: 3px; height: 12px; border-radius: 2px;
+  background: linear-gradient(to bottom, var(--brass), var(--brass-light));
+  flex: none;
 }
 .sidebar-empty { padding: 0 10px; font-size: 12px; color: var(--muted); }
 
@@ -1120,12 +1150,22 @@ body {
 
 /* Recents */
 .recent-row {
-  display: flex; align-items: center; gap: 2px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; gap: 2px;
+  margin: 0 0 8px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
   opacity: 0;
   transform: translateX(-28px);
   animation: slideInLeft 0.7s var(--ease) forwards;
 }
-.recent-row:hover { background: var(--paper-dim); }
+.recent-row:hover {
+  border-color: rgba(242, 80, 17, 0.28);
+  background: var(--paper-dim);
+  box-shadow: var(--shadow-md);
+}
 
 /* Staggered left-to-right entrance for recents */
 .sidebar-section .recent-row:nth-child(1) { animation-delay: 0.08s; }
@@ -1140,38 +1180,67 @@ body {
 .sidebar-section .recent-row:nth-child(10) { animation-delay: 0.80s; }
 .recent-query {
   flex: 1; min-width: 0; text-align: left; background: none; border: none; cursor: pointer;
-  padding: 8px 4px 8px 10px; font: inherit; font-size: 12.5px; color: var(--ink);
+  padding: 8px 4px 8px 8px; font: inherit; font-size: 12.5px; color: var(--ink);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  display: flex; align-items: center; gap: 8px;
+}
+.recent-icon {
+  flex: none;
+  width: 28px; height: 28px; border-radius: 8px;
+  background: var(--card); border: 1px solid var(--rule);
+  display: grid; place-items: center;
+  font-size: 13px; line-height: 1;
+  color: var(--muted);
+  transition: background var(--dur-med) var(--ease),
+              border-color var(--dur-med) var(--ease),
+              color var(--dur-med) var(--ease);
+}
+.recent-text {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.pin-btn, .remove-btn {
-  flex: none; background: none; border: none; cursor: pointer; color: var(--muted);
-  font-size: 17px; line-height: 1; padding: 6px; opacity: 0; transition: opacity var(--dur-fast), color var(--dur-fast);
+.recent-chevron {
+  flex: none;
+  padding: 0 10px 0 4px;
+  color: var(--muted);
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: opacity var(--dur-fast);
 }
-.recent-row:hover .pin-btn, .recent-row:hover .remove-btn { opacity: 1; }
+.recent-row-pinned .recent-chevron { display: none; }
+.pin-btn, .remove-btn {
+  display: none;
+  flex: none; background: none; border: none; cursor: pointer; color: var(--muted);
+  font-size: 17px; line-height: 1; padding: 6px; transition: opacity var(--dur-fast), color var(--dur-fast);
+}
+.recent-row:hover .recent-chevron { opacity: 0; width: 0; padding-left: 0; padding-right: 0; }
+.recent-row:hover .pin-btn, .recent-row:hover .remove-btn { display: block; }
 .pin-btn:hover, .remove-btn:hover { color: var(--brass); }
-.pin-btn.pinned { color: var(--brass); opacity: 1; }
+.pin-btn.pinned { display: block; color: var(--brass); }
 .remove-btn { padding-right: 10px; font-size: 19px; }
 
 .recents-toggle {
   width: 100%; margin-top: 4px;
   padding: 6px 10px; border-radius: var(--radius-sm);
-  background: var(--paper-dim); border: 1px solid var(--rule);
-  font: inherit; font-size: 11.5px; font-weight: 500; color: var(--muted);
+  background: var(--paper-dim); border: 1.5px solid var(--brass);
+  font: inherit; font-size: 11.5px; font-weight: 500; color: var(--brass);
   cursor: pointer; text-align: center;
-  transition: border-color var(--dur-fast), color var(--dur-fast), background var(--dur-fast);
+  transition: border-color var(--dur-fast), color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
 }
 .recents-toggle:hover {
-  border-color: var(--brass); color: var(--brass); background: var(--sidebar-accent);
+  border-color: var(--color-brand-hover); color: var(--color-brand-hover); background: var(--sidebar-accent);
+  box-shadow: 0 2px 8px rgba(242, 80, 17, 0.10);
 }
 .dark .recents-toggle {
   background: rgba(255, 255, 255, 0.06);
-  border-color: var(--rule);
-  color: var(--sidebar-muted);
+  border-color: var(--brass);
+  color: var(--brass);
 }
 .dark .recents-toggle:hover {
   background: var(--sidebar-accent);
-  border-color: var(--brass);
-  color: var(--brass);
+  border-color: var(--color-brand-hover);
+  color: var(--color-brand-hover);
+  box-shadow: 0 2px 8px rgba(242, 80, 17, 0.15);
 }
 
 /* Footer */
