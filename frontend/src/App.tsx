@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { ActionPayload } from './types';
 import { Surface } from './a2ui/catalog';
 import { downloadTripPdf } from './pdf';
@@ -15,16 +15,10 @@ import { fmtDuration, addDays, formatAppointmentDate, CABIN_CLASSES, cabinMultip
 import { useVoiceSearch } from '@/lib/useVoiceSearch';
 import {
   Plane, Hotel, Stethoscope, HeartPulse,
-  Wallet, TrendingUp,
+  Wallet, TrendingUp, MapPin, Mic,
 } from 'lucide-react';
 
 const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
-
-const EXAMPLES = [
-  { icon: '+', text: 'Find a dentist near me' },
-  { icon: '+', text: 'Suggest me best places to travel in India' },
-  { icon: '+', text: "Let's plan for a trip" },
-];
 
 interface QuickAction {
   icon: React.ReactNode;
@@ -33,34 +27,18 @@ interface QuickAction {
   query: string;
 }
 
-interface ActionGroup {
-  title: string;
-  items: QuickAction[];
-}
-
-const ACTION_GROUPS: ActionGroup[] = [
-  {
-    title: 'Travel',
-    items: [
-      { icon: <Plane size={18} />, label: 'Find flights', description: 'Search flights by route & date', query: 'Find flights from Delhi to Goa' },
-      { icon: <Hotel size={18} />, label: 'Find hotels', description: 'Browse stays by destination', query: 'Best hotels in Manali' },
-    ],
-  },
-  {
-    title: 'Health',
-    items: [
-      { icon: <Stethoscope size={18} />, label: 'Find a doctor', description: 'Search specialists & clinics', query: 'Find a dentist near me' },
-      { icon: <HeartPulse size={18} />, label: 'My appointments', description: 'Upcoming & past visits', query: 'My upcoming appointments' },
-    ],
-  },
-  {
-    title: 'Finance',
-    items: [
-      { icon: <TrendingUp size={18} />, label: 'Give me my portfolio', description: 'Portfolio overview & tips', query: 'Give me my portfolio' },
-      { icon: <Wallet size={18} />, label: 'Show me my expenses', description: 'See where your money goes', query: 'Show me my expenses' },
-    ],
-  },
+const FEATURED_ACTIONS: QuickAction[] = [
+  { icon: <TrendingUp size={18} />, label: 'Give me my portfolio', description: 'Portfolio overview & tips', query: 'Give me my portfolio' },
+  { icon: <MapPin size={18} />, label: "Let's plan for a trip", description: 'Plan your next getaway', query: "Let's plan for a trip" },
+  { icon: <HeartPulse size={18} />, label: 'My appointments', description: 'Upcoming & past visits', query: 'My upcoming appointments' },
 ];
+
+const EXAMPLES = [
+  { icon: '+', text: 'Find a dentist near me' },
+  { icon: '+', text: 'Show me weather in Hyderabad' },
+  { icon: '+', text: 'Show my bookings' },
+];
+
 
 function FlightSkeleton() {
   return (
@@ -117,6 +95,16 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   const [expandOrigin, setExpandOrigin] = useState('');
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [pdfBusy, setPdfBusy] = useState(false);
+
+  // Scroll the chat to the latest content whenever this turn's store updates
+  // (SSE streaming, action confirmations, etc.) — App-level turns.length only
+  // catches newly added turns, not content arriving within an existing one.
+  useLayoutEffect(() => {
+    const scrollEl = document.querySelector('.chat-scroll') as HTMLElement | null;
+    if (scrollEl) {
+      scrollEl.scrollTo({ top: scrollEl.scrollHeight, behavior: 'smooth' });
+    }
+  }, [storeVersion]);
 
   // A flight can't be booked from a single click the way a room can — real
   // fares need traveler details, and a round trip needs a return date — so
@@ -728,29 +716,22 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 function QuickActionsGrid({ onQuery }: { onQuery: (q: string) => void }) {
   return (
     <div className="quick-actions-grid reveal">
-      {ACTION_GROUPS.map((group) => (
-        <div className="quick-actions-section" key={group.title}>
-          <div className="quick-actions-section-label">{group.title}</div>
-          <div className="quick-actions-cards">
-            {group.items.map((item, idx) => (
-              <button
-                key={item.label}
-                className="quick-action-card"
-                style={{ animationDelay: `${idx * 60}ms` }}
-                onClick={() => onQuery(item.query)}
-                title={item.query}
-              >
-                <span className="quick-action-icon" aria-hidden>{item.icon}</span>
-                <span className="quick-action-body">
-                  <span className="quick-action-label">{item.label}</span>
-                  {item.description && (
-                    <span className="quick-action-desc">{item.description}</span>
-                  )}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+      {FEATURED_ACTIONS.map((item, idx) => (
+        <button
+          key={item.label}
+          className="quick-action-card"
+          style={{ animationDelay: `${idx * 60}ms` }}
+          onClick={() => onQuery(item.query)}
+          title={item.query}
+        >
+          <span className="quick-action-icon" aria-hidden>{item.icon}</span>
+          <span className="quick-action-body">
+            <span className="quick-action-label">{item.label}</span>
+            {item.description && (
+              <span className="quick-action-desc">{item.description}</span>
+            )}
+          </span>
+        </button>
       ))}
     </div>
   );
@@ -829,18 +810,18 @@ export default function App() {
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
               />
-              {voice.supported && (
-                <button
-                  type="button"
-                  className={`mic-btn${voice.listening ? ' mic-btn-active' : ''}`}
-                  onClick={() => (voice.listening ? voice.stop() : voice.start())}
-                  aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
-                  title={voice.listening ? 'Stop voice search' : 'Search by voice'}
-                >
-                  🎤
-                </button>
-              )}
             </div>
+            {voice.supported && (
+              <button
+                type="button"
+                className={`mic-btn${voice.listening ? ' mic-btn-active' : ''}`}
+                onClick={() => (voice.listening ? voice.stop() : voice.start())}
+                aria-label={voice.listening ? 'Stop voice search' : 'Search by voice'}
+                title={voice.listening ? 'Stop voice search' : 'Search by voice'}
+              >
+                <Mic size={20} />
+              </button>
+            )}
             <Button size="lg" className="h-12" type="submit">
               Plan
             </Button>

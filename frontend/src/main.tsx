@@ -10,6 +10,9 @@ import PlanDetail from './pages/PlanDetail';
 import MyBookings from './pages/MyBookings';
 import MyActivity from './pages/MyActivity';
 import MyAppointments from './pages/MyAppointments';
+import InlinePlans from './components/activity/InlinePlans';
+import InlineBookings from './components/activity/InlineBookings';
+import InlineAppointments from './components/activity/InlineAppointments';
 import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
@@ -28,7 +31,11 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <Route path="/plans/:id" element={<PlanDetail />} />
               <Route path="/bookings" element={<MyBookings />} />
               <Route path="/appointments" element={<MyAppointments />} />
-              <Route path="/activity" element={<MyActivity />} />
+              <Route path="/activity" element={<MyActivity />}>
+              <Route path="plans" element={<InlinePlans />} />
+              <Route path="bookings" element={<InlineBookings />} />
+              <Route path="appointments" element={<InlineAppointments />} />
+            </Route>
               <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
           </Routes>

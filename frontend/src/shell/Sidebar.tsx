@@ -6,12 +6,18 @@ import { loadRecents, togglePin, removeRecent, RECENTS_EVENT, type RecentEntry }
 import { newChat } from './plannerBus';
 import { usePlanner } from '../planner/PlannerContext';
 import { Button } from '@/components/ui/button';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 const THEME_KEY = 'fission-exp-theme';
 
-const RECENTS_COLLAPSED = 5;
+const RECENTS_COLLAPSED = 10;
 
-export function Sidebar() {
+interface SidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
+
+export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { user, logout } = useAuth();
   const { plan } = usePlanner();
   const navigate = useNavigate();
@@ -22,7 +28,6 @@ export function Sidebar() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [recentsExpanded, setRecentsExpanded] = useState(false);
   const [emailExpanded, setEmailExpanded] = useState(false);
-  const [navKey, setNavKey] = useState(0);
   const profileRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -56,7 +61,7 @@ export function Sidebar() {
   const pinned = recents.filter((r) => r.pinned);
   const unpinned = recents.filter((r) => !r.pinned);
 
-  const goHome = () => { navigate('/'); newChat(); setNavKey((k) => k + 1); };
+  const goHome = () => { navigate('/'); newChat(); };
   const sendQuery = (q: string) => { navigate('/'); plan(q); };
 
   const handleLogout = () => {
@@ -66,19 +71,28 @@ export function Sidebar() {
 
   return (
     <>
-      <aside className="sidebar">
+      <aside className={`sidebar${collapsed ? ' sidebar-collapsed' : ''}`}>
         {/* Brand */}
         <div className="sidebar-top">
-          <div className="brand brand-compact" onClick={goHome} role="button" tabIndex={0}>
-            <span className="brand-mark">F</span>
-            <strong className="sidebar-brand-text">Fission</strong>
+          <div className="sidebar-heading">
+            <div className="brand brand-compact" onClick={goHome} role="button" tabIndex={0}>
+              <span className="brand-mark">F</span>
+              <strong className="sidebar-brand-text">Fission</strong>
+            </div>
+            <button
+              className="sidebar-toggle"
+              onClick={onToggle}
+              title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              aria-expanded={!collapsed}
+            >
+              {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
+            </button>
           </div>
-          <Button className="w-full" onClick={goHome}>
-            + New chat
-          </Button>
+          {!collapsed && <Button className="w-full" onClick={goHome}>+ New chat</Button>}
         </div>
 
-        <nav className="sidebar-nav">
+        {!collapsed && <nav className="sidebar-nav">
           {/* Recents */}
           {pinned.length > 0 && (
             <div className="sidebar-section">
@@ -102,7 +116,7 @@ export function Sidebar() {
               </button>
             )}
           </div>
-        </nav>
+        </nav>}
 
         {/* Footer */}
         <div className="sidebar-footer">
@@ -116,52 +130,106 @@ export function Sidebar() {
               {theme === 'light' ? '🌙' : '☀️'}
             </button>
 
-            {user ? (
-              <div className="profile-dropdown-wrap" ref={profileRef}>
-                <button
-                  className="profile-trigger-compact"
-                  onClick={() => setProfileOpen((s) => !s)}
-                  aria-haspopup="true"
-                  aria-expanded={profileOpen}
-                >
+            {!collapsed && (
+              user ? (
+                <div className="profile-dropdown-wrap" ref={profileRef}>
+                  <button
+                    className="profile-trigger-compact"
+                    onClick={() => setProfileOpen((s) => !s)}
+                    aria-haspopup="true"
+                    aria-expanded={profileOpen}
+                  >
+                    <span className="a2-monogram account-avatar" aria-hidden>
+                      {(user.email || '?').slice(0, 2).toUpperCase()}
+                    </span>
+                    <span className="profile-chevron" aria-hidden>{profileOpen ? '▲' : '▼'}</span>
+                  </button>
+
+                  {profileOpen && (
+                    <div className="profile-menu profile-menu-up">
+                      <div className="profile-menu-header">
+                        <span className="a2-monogram account-avatar" aria-hidden>
+                          {(user.email || '?').slice(0, 2).toUpperCase()}
+                        </span>
+                        <span
+                          className={`profile-menu-email${emailExpanded ? ' is-expanded' : ''}`}
+                          onClick={() => setEmailExpanded((s) => !s)}
+                          title={user.email ?? undefined}
+                          role="button"
+                          tabIndex={0}
+                          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setEmailExpanded((s) => !s); }}
+                        >
+                          {user.email}
+                        </span>
+                      </div>
+                      <div className="profile-menu-divider" />
+                      <button className="profile-menu-item" onClick={() => { navigate('/activity'); setProfileOpen(false); }}>
+                        <span className="profile-menu-icon" aria-hidden>📋</span>
+                        <span>My Activity</span>
+                      </button>
+                      <div className="profile-menu-divider" />
+                      <button className="profile-menu-item profile-menu-item-danger" onClick={handleLogout}>
+                        <span className="profile-menu-icon" aria-hidden>→</span>
+                        <span>Sign out</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => setAuthOpen(true)}>Sign in</Button>
+              )
+            )}
+
+            {collapsed && user && (
+              <button
+                className="account-avatar-collapsed"
+                onClick={() => setProfileOpen((s) => !s)}
+                title={user.email ?? 'Profile'}
+                aria-label="Open profile menu"
+              >
+                {(user.email || '?').slice(0, 2).toUpperCase()}
+              </button>
+            )}
+
+            {collapsed && !user && (
+              <button
+                className="theme-icon-btn"
+                onClick={() => setAuthOpen(true)}
+                title="Sign in"
+                aria-label="Sign in"
+              >
+                →
+              </button>
+            )}
+
+            {collapsed && profileOpen && user && (
+              <div className="profile-menu profile-menu-up profile-menu-collapsed">
+                <div className="profile-menu-header">
                   <span className="a2-monogram account-avatar" aria-hidden>
                     {(user.email || '?').slice(0, 2).toUpperCase()}
                   </span>
-                  <span className="profile-chevron" aria-hidden>{profileOpen ? '▲' : '▼'}</span>
+                  <span
+                    className={`profile-menu-email${emailExpanded ? ' is-expanded' : ''}`}
+                    onClick={() => setEmailExpanded((s) => !s)}
+                    title={user.email ?? undefined}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setEmailExpanded((s) => !s); }}
+                  >
+                    {user.email}
+                  </span>
+                </div>
+                <div className="profile-menu-divider" />
+                <button className="profile-menu-item" onClick={() => { navigate('/activity'); setProfileOpen(false); }}>
+                  <span className="profile-menu-icon" aria-hidden>📋</span>
+                  <span>My Activity</span>
                 </button>
-
-                {profileOpen && (
-                  <div className="profile-menu profile-menu-up">
-                    <div className="profile-menu-header">
-                      <span className="a2-monogram account-avatar" aria-hidden>
-                        {(user.email || '?').slice(0, 2).toUpperCase()}
-                      </span>
-                      <span
-                        className={`profile-menu-email${emailExpanded ? ' is-expanded' : ''}`}
-                        onClick={() => setEmailExpanded((s) => !s)}
-                        title={user.email ?? undefined}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setEmailExpanded((s) => !s); }}
-                      >
-                        {user.email}
-                      </span>
-                    </div>
-                    <div className="profile-menu-divider" />
-                    <button className="profile-menu-item" onClick={() => { navigate('/activity'); setProfileOpen(false); }}>
-                      <span className="profile-menu-icon" aria-hidden>📋</span>
-                      <span>My Activity</span>
-                    </button>
-                    <div className="profile-menu-divider" />
-                    <button className="profile-menu-item profile-menu-item-danger" onClick={handleLogout}>
-                      <span className="profile-menu-icon" aria-hidden>→</span>
-                      <span>Sign out</span>
-                    </button>
-                  </div>
-                )}
+                <div className="profile-menu-divider" />
+                <button className="profile-menu-item profile-menu-item-danger" onClick={handleLogout}>
+                  <span className="profile-menu-icon" aria-hidden>→</span>
+                  <span>Sign out</span>
+                </button>
               </div>
-            ) : (
-              <Button size="sm" variant="secondary" onClick={() => setAuthOpen(true)}>Sign in</Button>
             )}
           </div>
         </div>
