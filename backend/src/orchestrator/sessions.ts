@@ -146,6 +146,11 @@ export interface Session {
   subscribers: Set<FastifyReply>;
   /** hotel currently being viewed, so selectRoom knows which hotel it belongs to */
   activeHotelId?: string;
+  /** The `plans` row this session's trip has been persisted to, if any — set
+   * the first time a signed-in user books or saves the trip, then reused so
+   * re-confirming or hitting "Save to My Plans" updates that same row instead
+   * of creating a duplicate booking. */
+  savedPlanId?: string;
   hotelsCache: Map<string, any>;
   flightsCache: Map<string, any>;
   pendingIntent?: unknown;

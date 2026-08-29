@@ -250,7 +250,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
       if (action.name === 'selectRoom') {
         const rooms: any[] = surfaceData(runtime.getSurface('hotels'), '/rooms') || [];
         const room = rooms.find((r) => String(r.id) === String(action.context.roomId));
-        if (room) pushMessage(`🏨 Room booked — ${room.name}, ₹${room.price}/night. Save the trip or download the PDF whenever you're ready.`);
+        if (room) pushMessage(`🏨 ${room.name} added to your trip — ₹${room.price}/night. Add the lead guest name in the trip card, then Confirm booking.`);
       }
       if (action.name === 'bookTrip') {
         pushMessage('🎉 Booking confirmed! Check the trip summary alongside for your reference number.');
