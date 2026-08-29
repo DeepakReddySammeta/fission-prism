@@ -1,7 +1,7 @@
 {
   "name": "fission-prism",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Two independent apps, not an npm workspace: backend/ and frontend/ each manage their own node_modules. These scripts are just shortcuts.",
   "scripts": {
     "install:all": "npm --prefix backend install && npm --prefix frontend install",
