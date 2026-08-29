@@ -1173,6 +1173,16 @@ body {
   background: var(--paper-dim);
   box-shadow: var(--shadow-md);
 }
+.recent-row-active {
+  border-color: rgba(242, 80, 17, 0.4);
+  background: rgba(242, 80, 17, 0.06);
+  box-shadow: 0 0 0 1px rgba(242, 80, 17, 0.12), var(--shadow-md);
+}
+.recent-row-active .recent-icon {
+  background: rgba(242, 80, 17, 0.10);
+  border-color: rgba(242, 80, 17, 0.22);
+  color: var(--brass);
+}
 
 /* Staggered left-to-right entrance for recents */
 .sidebar-section .recent-row:nth-child(1) { animation-delay: 0.08s; }

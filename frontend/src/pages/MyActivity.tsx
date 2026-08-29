@@ -159,9 +159,11 @@ export default function MyActivity() {
                 <div className="activity-card-icon" aria-hidden>{f.icon}</div>
                 <div className="activity-card-title">{f.title}</div>
                 <div className="activity-card-desc">{f.description}</div>
-                <div className="activity-card-meta">
-                  {f.countKey ? `${counts[f.countKey]} ${counts[f.countKey] === 1 ? 'item' : 'items'}` : ' '}
-                </div>
+                {f.countKey && counts[f.countKey] > 0 && (
+                  <div className="activity-card-meta">
+                    {`${counts[f.countKey]} ${counts[f.countKey] === 1 ? 'item' : 'items'}`}
+                  </div>
+                )}
                 <div className="activity-card-cta">
                   <span>{isCardActive(f) ? 'Close' : 'View all'}</span>
                   <span aria-hidden>{isCardActive(f) ? '×' : '→'}</span>

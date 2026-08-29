@@ -60,6 +60,7 @@ export interface Conversation {
 }
 
 interface PlannerContextValue {
+  activeId: string;
   turns: Turn[];
   plan: (q: string) => Promise<void>;
   resetPlanner: () => void;
@@ -230,7 +231,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => () => { esMapRef.current.forEach((es) => es.close()); }, []);
 
   return (
-    <PlannerContext.Provider value={{ turns, plan, resetPlanner: startNewChat, openConversation }}>
+    <PlannerContext.Provider value={{ activeId, turns, plan, resetPlanner: startNewChat, openConversation }}>
       {children}
     </PlannerContext.Provider>
   );
