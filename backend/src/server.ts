@@ -21,6 +21,7 @@ import { detectFinanceQuery, type FinanceQuery } from './agents/finance';
 import { getDoctorById } from './mock/doctors';
 import {
   createSession, getSession, subscribe, unsubscribe, emit, emitAll,
+  type Session,
   type PendingMyRecords, type PlanRecordSummary, type PendingAppointments, type AppointmentSummary,
   type PendingFinance, type CategoryStatus, type GoalSummary, type GoalPlanItem,
   type CashFlowPoint, type RecentExpenseRow,
@@ -315,6 +316,10 @@ app.get<{ Params: { sessionId: string } }>('/api/events/:sessionId', async (req,
  * 'trip'). */
 function emitMyRecords(sessionId: string, pending: PendingMyRecords) {
   if (pending.kind === 'list') {
+    // An empty result is fully covered by the chat summary ("You don't have
+    // any bookings saved yet.") — rendering a header-only card under it looks
+    // broken, not "decent". Same guard as emitAppointments.
+    if (pending.records.length === 0) return;
     const base = pending.recordType === 'bookings' ? 'My Bookings' : 'My Plans';
     const suffix = pending.bookingType === 'trips' ? ' — Full Trips'
       : pending.bookingType === 'flights' ? ' — Flights Only'
@@ -1463,6 +1468,9 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
     }
     recomputeTotal(session);
     session.trip.bookingRef = `VOY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    // A confirmed booking is persisted immediately for a signed-in user, so
+    // it shows under "my bookings" without a separate "Save to My Plans" tap.
+    upsertTripPlan(session, req.user?.id);
     emitAll(sessionId, tripSummarySurface('trip', session.trip));
   }
 
@@ -1477,6 +1485,7 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
     if (canBook) {
       if (needsGuestName) session.trip.guestName = guestName;
       session.trip.bookingRef = `VOY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      upsertTripPlan(session, req.user?.id);
       emitAll(sessionId, tripSummarySurface('trip', session.trip));
     }
   }
@@ -1566,6 +1575,37 @@ function tripImageUrl(trip: TripSummary): string {
   }
   if (trip.hotel) return hotelImage(trip.hotel.imageSeed);
   return destinationImage(trip.destination);
+}
+
+/** Persist a session's trip to the `plans` table for a signed-in user, or
+ * update the row it was already saved to. Used both by the explicit "Save to
+ * My Plans" button and automatically the moment a trip is booked, so a
+ * confirmed booking (VOY- ref) always shows up under "my bookings" without a
+ * second manual step — and re-confirming never creates a duplicate.
+ * Returns the row id, or null for a guest (the table requires a user_id). */
+function upsertTripPlan(session: Session, userId: string | undefined, title?: string): string | null {
+  if (!userId || !session.trip.destination) return null;
+  const now = new Date().toISOString();
+  const resolvedTitle = title?.trim() || `Trip to ${titleCase(session.trip.destination)}`;
+  const imageUrl = tripImageUrl(session.trip);
+  const tripJson = JSON.stringify(session.trip);
+
+  if (session.savedPlanId) {
+    const owned = db.prepare('SELECT user_id FROM plans WHERE id = ?').get(session.savedPlanId) as { user_id: string } | undefined;
+    if (owned?.user_id === userId) {
+      db.prepare('UPDATE plans SET title = ?, destination = ?, image_url = ?, trip_json = ? WHERE id = ?')
+        .run(resolvedTitle, session.trip.destination, imageUrl, tripJson, session.savedPlanId);
+      return session.savedPlanId;
+    }
+  }
+
+  const id = newId();
+  db.prepare(`
+    INSERT INTO plans (id, user_id, title, destination, image_url, trip_json, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(id, userId, resolvedTitle, session.trip.destination, imageUrl, tripJson, now);
+  session.savedPlanId = id;
+  return id;
 }
 
 /** A fare/room-night sum was never the real final price — this adds a flat
@@ -1666,16 +1706,9 @@ app.post<{ Body: { sessionId: string; title?: string } }>('/api/plans', { preHan
   const session = getSession(sessionId);
   if (!session || !session.trip.destination) return reply.code(400).send({ error: 'no trip to save yet' });
 
-  const id = newId();
-  const imageUrl = tripImageUrl(session.trip);
-  db.prepare(`
-    INSERT INTO plans (id, user_id, title, destination, image_url, trip_json, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    id, req.user!.id, title?.trim() || `Trip to ${session.trip.destination}`,
-    session.trip.destination, imageUrl, JSON.stringify(session.trip), new Date().toISOString()
-  );
-
+  // Upserts: if this trip was already persisted (auto-saved on booking, or a
+  // previous "Save"), this updates that row rather than creating a duplicate.
+  const id = upsertTripPlan(session, req.user!.id, title);
   return reply.code(201).send({ id });
 });
 
