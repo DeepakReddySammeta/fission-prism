@@ -29,7 +29,7 @@ interface SidebarProps {
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { user, logout } = useAuth();
-  const { turns, openConversation } = usePlanner();
+  const { activeId, turns, openConversation } = usePlanner();
   const navigate = useNavigate();
   const location = useLocation();
   const [recents, setRecents] = useState<RecentEntry[]>(loadRecents());
@@ -149,7 +149,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
           {pinned.length > 0 && (
             <div className="sidebar-section">
               <div className="sidebar-section-label">Pinned</div>
-              {pinned.map((r) => <RecentRow key={r.id} entry={r} onOpen={() => openRecent(r)} />)}
+              {pinned.map((r) => <RecentRow key={r.id} entry={r} active={r.id === activeId} onOpen={() => openRecent(r)} />)}
             </div>
           )}
 
@@ -157,7 +157,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             <div className="sidebar-section-label">Recents</div>
             {unpinned.length === 0 && <p className="sidebar-empty">Your recent searches will show up here.</p>}
             {(recentsExpanded ? unpinned : unpinned.slice(0, RECENTS_COLLAPSED)).map((r) => (
-              <RecentRow key={r.id} entry={r} onOpen={() => openRecent(r)} />
+              <RecentRow key={r.id} entry={r} active={r.id === activeId} onOpen={() => openRecent(r)} />
             ))}
             {unpinned.length > RECENTS_COLLAPSED && (
               <button
@@ -302,9 +302,9 @@ function queryIcon(query: string): React.ReactNode {
   return <Star size={15} />;
 }
 
-function RecentRow({ entry, onOpen }: { entry: RecentEntry; onOpen: () => void }) {
+function RecentRow({ entry, active, onOpen }: { entry: RecentEntry; active: boolean; onOpen: () => void }) {
   return (
-    <div className={`recent-row${entry.pinned ? ' recent-row-pinned' : ''}`}>
+    <div className={`recent-row${entry.pinned ? ' recent-row-pinned' : ''}${active ? ' recent-row-active' : ''}`}>
       <button className="recent-query" onClick={onOpen} title={entry.query}>
         <span className="recent-icon" aria-hidden>{queryIcon(entry.query)}</span>
         <span className="recent-text">{entry.query}</span>
