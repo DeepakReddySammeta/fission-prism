@@ -1,6 +1,6 @@
 {
-  "name": "fission-prism-frontend",
-  "version": "1.0.4",
+  "name": "prism-frontend",
+  "version": "1.0.5",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -7,7 +7,7 @@
 :root {
   /* Fission's own default ("fission"/orange) brand theme — no client
    * override layer anymore; these are Fission's literal published values
-  * (design-system site, :root[data-theme=fission]), not Fission Prism's own
+  * (design-system site, :root[data-theme=fission]), not Prism's own
    * picks. --navy/--brass/etc. are kept as the variable *names* our own
    * hand-authored CSS already references throughout this file — only the
    * values moved to Fission's palette, so nothing downstream needed to
@@ -73,7 +73,7 @@
   --dur: 0.32s;
 
   /* ---- Fission/shadcn-standard tokens. Previously these mapped Fission's
-  * naming onto a separate custom Fission Prism palette; now that the app runs
+  * naming onto a separate custom Prism palette; now that the app runs
    * Fission's own theme directly, they just alias straight onto the names
    * above, which already hold Fission's real values. ---- */
   --color-brand: var(--brass);
@@ -188,12 +188,8 @@ body {
 
 .brand { display: flex; align-items: center; gap: 16px; animation: fadeInUp var(--dur) var(--ease) both; }
 .brand-mark {
-  width: 52px; height: 52px; border-radius: 14px;
-  background: linear-gradient(155deg, var(--navy), var(--navy-deep));
-  color: var(--brass-light);
-  display: grid; place-items: center;
-  font-family: var(--serif); font-weight: 700; font-size: 26px;
-  box-shadow: var(--shadow-md);
+  display: inline-flex;
+  color: var(--heading);
   transition: transform var(--dur-fast) var(--ease);
 }
 .brand:hover .brand-mark { transform: scale(1.05) rotate(-2deg); }
@@ -855,7 +851,6 @@ body {
  * restores it by matching that specificity, placed after so source order
  * settles the tie in its favor. */
 .dark .a2-choice-active { background: var(--brass); border-color: var(--brass); color: #fff; }
-.dark .brand-mark { color: var(--brass-light); }
 
 /* ---------------- Shell / sidebar ---------------- */
 
@@ -882,7 +877,7 @@ body {
 .sidebar-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
 .sidebar-top { display: flex; flex-direction: column; gap: 12px; }
 .brand-compact {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 4px;
   cursor: pointer; user-select: none;
   opacity: 0;
   transform: translateX(-28px);

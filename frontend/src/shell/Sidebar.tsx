@@ -6,6 +6,7 @@ import { loadRecents, togglePin, removeRecent, RECENTS_EVENT, type RecentEntry }
 import { newChat } from './plannerBus';
 import { usePlanner } from '../planner/PlannerContext';
 import { APPS, classifyApp, type AppId } from './apps';
+import { PrismMark } from './PrismMark';
 import { Button } from '@/components/ui/button';
 import {
   PanelLeftClose, PanelLeftOpen, Plane, Stethoscope, Wallet,
@@ -107,8 +108,8 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         <div className="sidebar-top">
           <div className="sidebar-heading">
             <div className="brand brand-compact" onClick={goHome} role="button" tabIndex={0}>
-              <span className="brand-mark">F</span>
-              <strong className="sidebar-brand-text">Fission Prism</strong>
+              <span className="brand-mark"><PrismMark size={42} /></span>
+              <strong className="sidebar-brand-text">Prism</strong>
             </div>
             <button
               className="sidebar-toggle"

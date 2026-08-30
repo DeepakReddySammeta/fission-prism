@@ -10,6 +10,7 @@ import { TripBuilderCard } from './components/TripBuilderCard';
 import { WeatherCard } from './components/WeatherCard';
 import { Stepper } from './components/Stepper';
 import { NEW_CHAT_EVENT } from './shell/plannerBus';
+import { PrismMark } from './shell/PrismMark';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { fmtDuration, addDays, formatAppointmentDate, CABIN_CLASSES, cabinMultiplier, cabinBaggageKg } from '@/lib/utils';
@@ -847,9 +848,9 @@ export default function App() {
           {!showConversation && (
             <div className="chat-brand-hero">
               <div className="brand">
-                <span className="brand-mark">F</span>
+                <span className="brand-mark"><PrismMark size={76} /></span>
                 <div>
-                  <h1>Fission Prism</h1>
+                  <h1>Prism</h1>
                   <p className="brand-tagline">Travel, health & finance — all in one place</p>
                 </div>
               </div>
