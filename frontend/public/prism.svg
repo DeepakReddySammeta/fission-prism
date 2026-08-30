@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>
+    .ring { stroke: #1a1a1a; }
+    @media (prefers-color-scheme: dark) { .ring { stroke: #f2f2f0; } }
+  </style>
+  <circle class="ring" cx="50" cy="50" r="38" fill="none" stroke-width="3"/>
+  <line x1="21" y1="28" x2="42" y2="49" stroke="#7F77DD" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="16" y1="49" x2="42" y2="49" stroke="#378ADD" stroke-width="2.5" stroke-linecap="round"/>
+  <line x1="20" y1="70" x2="42" y2="49" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round"/>
+  <polygon points="50,32 34,66 66,66" fill="#F25111"/>
+  <line x1="58" y1="49" x2="84" y2="49" stroke="#F25111" stroke-width="3" stroke-linecap="round"/>
+</svg>

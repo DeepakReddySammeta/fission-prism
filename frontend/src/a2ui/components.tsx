@@ -1,5 +1,5 @@
 /**
- * Fission Prism's A2UI component catalog — the same visual vocabulary the
+ * Prism's A2UI component catalog — the same visual vocabulary the
  * hand-rolled renderer in the old `catalog.tsx` produced, re-expressed as
  * `@a2ui/react` component implementations so the a2ui engine (data binding,
  * templated child lists, action dispatch, `checks` validation, reactivity)

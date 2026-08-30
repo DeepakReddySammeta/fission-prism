@@ -1,5 +1,5 @@
 /**
- * Zod schemas for Fission Prism's A2UI catalog components.
+ * Zod schemas for Prism's A2UI catalog components.
  *
  * The a2ui generic binder (`@a2ui/web_core`) reads these schemas structurally
  * to decide how to treat each prop:
