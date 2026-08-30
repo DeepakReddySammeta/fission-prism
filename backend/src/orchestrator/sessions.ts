@@ -234,6 +234,7 @@ export function getSession(id: string): Session | undefined {
 }
 
 export function subscribe(id: string, reply: FastifyReply) {
+  const s = sessions.get(id);
   if (!s) return;
   s.subscribers.add(reply);
 }
