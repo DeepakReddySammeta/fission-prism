@@ -461,12 +461,12 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
       {intent?.summary ? (
         <div className="chat-msg-ai reveal">
-          <span className="chat-ai-avatar" aria-hidden>F</span>
+          <span className="chat-ai-avatar" aria-hidden><PrismMark size={20} /></span>
           <p>{intent.summary}</p>
         </div>
       ) : loading ? (
         <div className="chat-msg-ai reveal">
-          <span className="chat-ai-avatar" aria-hidden>F</span>
+          <span className="chat-ai-avatar" aria-hidden><PrismMark size={20} /></span>
           <p className="chat-thinking">Thinking…</p>
         </div>
       ) : null}
@@ -762,7 +762,7 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
       {actionMessages.map((msg, i) => (
         <div className="chat-msg-ai reveal" key={i}>
-          <span className="chat-ai-avatar" aria-hidden>F</span>
+          <span className="chat-ai-avatar" aria-hidden><PrismMark size={20} /></span>
           <p>{msg}</p>
         </div>
       ))}
