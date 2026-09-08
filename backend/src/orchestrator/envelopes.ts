@@ -1840,3 +1840,84 @@ export function goalsAnalysisSurface(
     ...dataEnvelopes,
   ];
 }
+
+/* ---------------- Books ---------------- */
+
+const BOOK_COVER_TONES = ['#8B4513', '#2E8B57', '#4682B4', '#CD853F', '#6A5ACD', '#B22222'];
+
+function bookCoverTone(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return BOOK_COVER_TONES[h % BOOK_COVER_TONES.length];
+}
+
+export function booksSurface(
+  surfaceId: string,
+  books: { id: string; title: string; author: string; firstPublishYear: number; coverUrl?: string }[],
+  source: 'live' | 'none',
+): Envelope[] {
+  const mapped = books.map((b) => ({
+    ...b,
+    coverTone: bookCoverTone(b.id),
+    yearLabel: b.firstPublishYear > 0 ? String(b.firstPublishYear) : 'Unknown year',
+  }));
+
+  const empty = books.length === 0;
+
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', children: empty ? ['head', 'empty'] : ['head', 'list'] },
+    { id: 'head', component: 'Text', variant: 'h2', text: 'Books' },
+  ];
+
+  if (empty) {
+    components.push(
+      { id: 'empty', component: 'Text', variant: 'body', text: source === 'live' ? 'No books found for your search.' : 'Book search is temporarily unavailable.' },
+    );
+    return [
+      createSurface(surfaceId, 'Book Search', '#f25011'),
+      { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    ];
+  }
+
+  components.push(
+    { id: 'list', component: 'List', children: { path: '/books', componentId: 'book_row' } },
+    { id: 'book_row', component: 'Row', align: 'center', gap: 14, children: ['br_cover', 'br_body', 'br_btn'] },
+    { id: 'br_cover', component: 'Image', url: { path: 'coverUrl' } },
+    { id: 'br_body', component: 'Column', weight: 1, gap: 4, children: ['br_title', 'br_author', 'br_year'] },
+    { id: 'br_title', component: 'Text', variant: 'h3', text: { path: 'title' } },
+    { id: 'br_author', component: 'Text', variant: 'body', text: { path: 'author' } },
+    { id: 'br_year', component: 'Text', variant: 'caption', text: { path: 'yearLabel' } },
+    { id: 'br_btn_label', component: 'Text', text: 'Details' },
+    { id: 'br_btn', component: 'Button', variant: 'secondary', child: 'br_btn_label', action: { event: { name: 'viewBookDetails', context: { bookId: { path: 'id' } } } } },
+  );
+
+  return [
+    createSurface(surfaceId, 'Book Search', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    updateData(surfaceId, '/books', mapped),
+  ];
+}
+
+export function bookDetailsSurface(
+  surfaceId: string,
+  book: { id: string; title: string; author: string; firstPublishYear: number; coverUrl?: string },
+): Envelope[] {
+  return [
+    createSurface(surfaceId, 'Book Details', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', gap: 12, children: ['bd_cover', 'bd_title', 'bd_author', 'bd_year'] },
+          { id: 'bd_cover', component: 'Image', url: book.coverUrl || '' },
+          { id: 'bd_title', component: 'Text', variant: 'h1', text: book.title },
+          { id: 'bd_author', component: 'Text', variant: 'h3', text: book.author },
+          { id: 'bd_year', component: 'Text', variant: 'body', text: book.firstPublishYear > 0 ? `First published: ${book.firstPublishYear}` : 'Publication year unknown' },
+        ],
+      },
+    },
+  ];
+}

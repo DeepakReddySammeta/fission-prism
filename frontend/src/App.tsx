@@ -400,6 +400,8 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // profile, and the appointment form/confirmation all share this one
   // surfaceId, the same way hotels list vs. rooms detail do.
   const healthSurface = runtime.getSurface('health');
+  // Book search results — list of books with cover, title, author, year.
+  const booksSurface = runtime.getSurface('books');
 
   const expectedAgents = intent?.agents || [];
   const flightsPending = expectedAgents.includes('flights') && !(flightsSurface && componentCount(flightsSurface) > 0);
@@ -513,6 +515,12 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
           {componentCount(financeSurface) > 0 && (
             <div className="reveal">
               <Surface surface={financeSurface} className="surface-finance" />
+            </div>
+          )}
+
+          {componentCount(booksSurface) > 0 && (
+            <div className="reveal">
+              <Surface surface={booksSurface} className="surface-books" />
             </div>
           )}
 

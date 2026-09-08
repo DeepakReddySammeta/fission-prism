@@ -91,7 +91,7 @@ export interface ParsedIntent {
    * other intent path (which does rely on it) can't accidentally forget it. */
   destination: string;
   durationNights?: number;
-  agents: Array<'flights' | 'hotels' | 'health'>;
+  agents: Array<'flights' | 'hotels' | 'health' | 'books'>;
   /** free-text constraint carried over from a refinement message, e.g. "cheaper", "5-star only" */
   refinement?: string;
   /** best-effort ISO dates (YYYY-MM-DD) extracted from the query, if present */

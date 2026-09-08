@@ -176,6 +176,9 @@ export interface Session {
    * viewDoctorProfile/confirmAppointment can look one up without re-running
    * the (pure, cheap) match — same shape as hotelsCache/flightsCache. */
   doctorsCache: Map<string, any>;
+  /** Book search results cache, keyed by book id — so viewBookDetails can
+   * look up a book without re-running the search. Mirrors hotelsCache. */
+  booksCache: Map<string, any>;
   /** Doctor currently being viewed, so confirmAppointment knows who the
    * booking is for — mirrors activeHotelId. */
   activeDoctorId?: string;
@@ -222,7 +225,7 @@ export function createSession(): Session {
   const id = randomUUID();
   const session: Session = {
     id, trip: { destination: '' }, subscribers: new Set(),
-    hotelsCache: new Map(), flightsCache: new Map(), doctorsCache: new Map(),
+    hotelsCache: new Map(), flightsCache: new Map(), doctorsCache: new Map(), booksCache: new Map(),
     wire: { created: new Set(), components: new Map() },
   };
   sessions.set(id, session);
