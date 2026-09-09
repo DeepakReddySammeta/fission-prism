@@ -399,6 +399,8 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // profile, and the appointment form/confirmation all share this one
   // surfaceId, the same way hotels list vs. rooms detail do.
   const healthSurface = runtime.getSurface('health');
+  // Book search results — list of books with cover, title, author, year.
+  const booksSurface = runtime.getSurface('books');
   // Live weather — its own surface, generated from the catalog like every
   // other agent response (see weatherSurface in envelopes.ts), fired either
   // standalone ("what's the weather in X") or as a cross-sell alongside a
@@ -510,6 +512,12 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
           {componentCount(financeSurface) > 0 && (
             <div className="reveal">
               <Surface surface={financeSurface} className="surface-finance" />
+            </div>
+          )}
+
+          {componentCount(booksSurface) > 0 && (
+            <div className="reveal">
+              <Surface surface={booksSurface} className="surface-books" />
             </div>
           )}
 

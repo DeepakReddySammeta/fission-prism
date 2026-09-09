@@ -1841,65 +1841,140 @@ export function goalsAnalysisSurface(
   ];
 }
 
-/* ---------------- Weather ----------------
- * The last surface that used to be its own hand-written React component
- * (WeatherCard.tsx) with its own client-side fetch — now a real A2UI surface
- * like every other agent response: data assembled here, layout composed by
- * the model from the generic catalog. The updateComponents tree below is a
- * placeholder only — buildSurface (see uiAgent.ts) always replaces it, never
- * reads it. */
+/* ---------------- Books ---------------- */
 
-const WEATHER_ICON: [test: (c: string) => boolean, emoji: string][] = [
-  [(c) => c.includes('thunder'), '⛈️'],
-  [(c) => c.includes('snow'), '❄️'],
-  [(c) => c.includes('drizzle') || c.includes('rain') || c.includes('shower'), '🌧️'],
-  [(c) => c.includes('fog') || c.includes('rime'), '🌫️'],
-  [(c) => c.includes('overcast'), '☁️'],
-  [(c) => c.includes('partly'), '⛅'],
-  [(c) => c.includes('clear'), '☀️'],
-];
+const BOOK_COVER_TONES = ['#8B4513', '#2E8B57', '#4682B4', '#CD853F', '#6A5ACD', '#B22222'];
 
-function weatherEmoji(condition: string): string {
-  const c = condition.toLowerCase();
-  return WEATHER_ICON.find(([test]) => test(c))?.[1] ?? '🌤️';
+function bookCoverTone(seed: string): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return BOOK_COVER_TONES[h % BOOK_COVER_TONES.length];
 }
 
-function weatherDayLabel(iso: string, index: number): string {
-  if (index === 0) return 'Today';
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { weekday: 'short' });
-}
+export function booksSurface(
+  surfaceId: string,
+  books: { id: string; title: string; author: string; firstPublishYear: number; coverUrl?: string }[],
+  source: 'live' | 'none',
+): Envelope[] {
+  const mapped = books.map((b) => ({
+    ...b,
+    coverTone: bookCoverTone(b.id),
+    yearLabel: b.firstPublishYear > 0 ? String(b.firstPublishYear) : 'Unknown year',
+  }));
 
-export function weatherSurface(surfaceId: string, reading: WeatherReading): Envelope[] {
-  const data = {
-    place: reading.place,
-    temperatureC: Math.round(reading.temperatureC),
-    feelsLikeC: Math.round(reading.feelsLikeC),
-    condition: reading.condition,
-    icon: weatherEmoji(reading.condition),
-    humidityPercent: reading.humidityPercent,
-    windKph: Math.round(reading.windKph),
-    provider: reading.provider,
-    daily: reading.daily.map((d, i) => ({
-      ...d,
-      minC: Math.round(d.minC),
-      maxC: Math.round(d.maxC),
-      dayLabel: weatherDayLabel(d.date, i),
-      icon: weatherEmoji(d.condition),
-    })),
-  };
+  const empty = books.length === 0;
+
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    { id: 'body', component: 'Column', children: empty ? ['head', 'empty'] : ['head', 'list'] },
+    { id: 'head', component: 'Text', variant: 'h2', text: 'Books' },
+  ];
+
+  if (empty) {
+    components.push(
+      { id: 'empty', component: 'Text', variant: 'body', text: source === 'live' ? 'No books found for your search.' : 'Book search is temporarily unavailable.' },
+    );
+    return [
+      createSurface(surfaceId, 'Book Search', '#f25011'),
+      { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    ];
+  }
+
+  components.push(
+    { id: 'list', component: 'List', children: { path: '/books', componentId: 'book_row' } },
+    { id: 'book_row', component: 'Row', align: 'center', gap: 14, children: ['br_cover', 'br_body', 'br_btn'] },
+    { id: 'br_cover', component: 'Image', url: { path: 'coverUrl' } },
+    { id: 'br_body', component: 'Column', weight: 1, gap: 4, children: ['br_title', 'br_author', 'br_year'] },
+    { id: 'br_title', component: 'Text', variant: 'h3', text: { path: 'title' } },
+    { id: 'br_author', component: 'Text', variant: 'body', text: { path: 'author' } },
+    { id: 'br_year', component: 'Text', variant: 'caption', text: { path: 'yearLabel' } },
+    { id: 'br_btn_label', component: 'Text', text: 'Details' },
+    { id: 'br_btn', component: 'Button', variant: 'secondary', child: 'br_btn_label', action: { event: { name: 'viewBookDetails', context: { bookId: { path: 'id' } } } } },
+  );
+
   return [
-    createSurface(surfaceId, 'Weather', '#f25011'),
+    createSurface(surfaceId, 'Book Search', '#f25011'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    updateData(surfaceId, '/books', mapped),
+  ];
+}
+
+export function bookDetailsSurface(
+  surfaceId: string,
+  book: { id: string; title: string; author: string; firstPublishYear: number; coverUrl?: string },
+): Envelope[] {
+  return [
+    createSurface(surfaceId, 'Book Details', '#f25011'),
     {
       version: A2UI_VERSION,
       updateComponents: {
         surfaceId,
         components: [
           { id: 'root', component: 'Card', child: 'body' },
-          { id: 'body', component: 'Text', variant: 'body', text: { path: 'place' } },
+          { id: 'body', component: 'Column', gap: 12, children: ['bd_cover', 'bd_title', 'bd_author', 'bd_year'] },
+          { id: 'bd_cover', component: 'Image', url: book.coverUrl || '' },
+          { id: 'bd_title', component: 'Text', variant: 'h1', text: book.title },
+          { id: 'bd_author', component: 'Text', variant: 'h3', text: book.author },
+          { id: 'bd_year', component: 'Text', variant: 'body', text: book.firstPublishYear > 0 ? `First published: ${book.firstPublishYear}` : 'Publication year unknown' },
         ],
       },
     },
-    updateData(surfaceId, '/', data),
+  ];
+}
+
+/* ---------------- Weather ---------------- */
+
+export function weatherSurface(surfaceId: string, reading: WeatherReading): Envelope[] {
+  const daily = reading.daily.map((d) => ({
+    ...d,
+    dayLabel: new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short' }),
+    rangeLabel: `${Math.round(d.minC)}° – ${Math.round(d.maxC)}°`,
+  }));
+
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    {
+      id: 'body', component: 'Column', gap: 14,
+      children: ['head', 'temp_row', 'detail_row', 'divider_1', 'forecast_label', 'forecast_list', 'provider_line'],
+    },
+    { id: 'head', component: 'Text', variant: 'h2', text: `Weather in ${reading.place}` },
+    {
+      id: 'temp_row', component: 'Row', gap: 16, align: 'center', children: ['temp_metric', 'condition_text'],
+    },
+    {
+      id: 'temp_metric', component: 'Metric',
+      label: 'Temperature',
+      value: `${Math.round(reading.temperatureC)}°C`,
+      delta: `Feels like ${Math.round(reading.feelsLikeC)}°C`,
+    },
+    { id: 'condition_text', component: 'Text', variant: 'h3', text: reading.condition },
+    {
+      id: 'detail_row', component: 'Row', gap: 12, children: ['humidity_badge', 'wind_badge'],
+    },
+    { id: 'humidity_badge', component: 'Badge', tone: 'neutral', text: `Humidity ${reading.humidityPercent}%` },
+    { id: 'wind_badge', component: 'Badge', tone: 'neutral', text: `Wind ${Math.round(reading.windKph)} km/h` },
+    { id: 'divider_1', component: 'Divider' },
+    { id: 'forecast_label', component: 'Text', variant: 'caption', text: 'Forecast' },
+    {
+      id: 'forecast_list', component: 'List',
+      children: { path: '/daily', componentId: 'forecast_row' },
+    },
+    {
+      id: 'forecast_row', component: 'Column', gap: 4, align: 'center',
+      children: ['fc_day', 'fc_range', 'fc_condition'],
+    },
+    { id: 'fc_day', component: 'Text', variant: 'caption', text: { path: 'dayLabel' } },
+    { id: 'fc_range', component: 'Text', variant: 'body', text: { path: 'rangeLabel' } },
+    { id: 'fc_condition', component: 'Text', variant: 'caption', text: { path: 'condition' } },
+    {
+      id: 'provider_line', component: 'Text', variant: 'caption',
+      text: `Live reading from ${reading.provider} — not a saved trip record.`,
+    },
+  ];
+
+  return [
+    createSurface(surfaceId, 'Weather', '#3b82f6'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    updateData(surfaceId, '/daily', daily),
   ];
 }

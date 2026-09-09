@@ -16,8 +16,9 @@
     "dotenv": "^16.4.5",
     "fastify": "^4.28.1",
     "google-auth-library": "^10.9.1",
-    "groq-sdk": "^1.6.0",
-    "jsonwebtoken": "^9.0.3"
+    "groq-sdk": "^0.7.0",
+    "jsonwebtoken": "^9.0.3",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

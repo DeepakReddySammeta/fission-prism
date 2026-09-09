@@ -1,0 +1,156 @@
+openapi: 3.0.3
+info:
+  title: OpenLibrary Books Search
+  description: Search books via the OpenLibrary Search API
+  version: 1.0.0
+servers:
+  - url: https://openlibrary.org
+
+paths:
+  /search.json:
+    get:
+      operationId: search
+      summary: Search for books
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Search query string
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: Max results to return
+          schema:
+            type: integer
+            default: 12
+        - name: fields
+          in: query
+          description: Comma-separated fields to fetch
+          schema:
+            type: string
+            default: "key,title,author_name,first_publish_year,cover_i"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  docs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                          description: OpenLibrary work key (e.g. /works/OL123W)
+                        title:
+                          type: string
+                          description: Book title
+                        author_name:
+                          type: array
+                          items:
+                            type: string
+                          description: List of author names
+                        first_publish_year:
+                          type: integer
+                          description: Year of first publication
+                        cover_i:
+                          type: integer
+                          description: Cover image ID
+
+x-a2ui-response:
+  rootPath: docs
+  filter: "item.title"
+  rawSchema:
+    - field: key
+      type: string
+      description: OpenLibrary work key (e.g. "/works/OL123W")
+    - field: title
+      type: string
+      description: Book title
+    - field: author_name
+      type: string[]
+      description: List of author names
+      optional: true
+    - field: first_publish_year
+      type: number
+      description: Year of first publication
+      optional: true
+    - field: cover_i
+      type: number
+      description: Cover image ID
+      optional: true
+
+x-a2ui-mapping:
+  transformations:
+    - target: id
+      source: key
+      transform: regexReplace
+      args:
+        pattern: "^/works/"
+        replacement: ""
+
+    - target: title
+      source: title
+      transform: identity
+
+    - target: author
+      source: author_name
+      transform: firstOrDefault
+      args:
+        fallback: "Unknown Author"
+
+    - target: firstPublishYear
+      source: first_publish_year
+      transform: defaultValue
+      args:
+        value: 0
+
+    - target: coverUrl
+      source: cover_i
+      transform: conditionalFormat
+      args:
+        template: "https://covers.openlibrary.org/b/id/{value}-M.jpg"
+        condition: notNull
+
+x-a2ui-llmView:
+  schemaDescription: |
+    Book search results. Each book has these fields:
+    - id: string — unique identifier
+    - title: string — book title
+    - author: string — primary author name
+    - firstPublishYear: number — year first published (0 if unknown)
+    - coverUrl: string (optional) — URL to cover image
+
+  designInstructions: |
+    Design a book search results card with:
+    1. A list of book rows. Each row shows:
+       - Cover image (small, left side) bound to coverUrl
+       - Title (heading) bound to title
+       - Author bound to author
+       - Publication year bound to firstPublishYear
+       - A "View Details" button that emits viewBookDetails with the book id
+    2. The list should be scrollable and visually clean.
+    3. Use path bindings like { "path": "title" } for all dynamic text.
+    4. Use { "path": "id" } in the button action context.
+
+  promptTemplate: |
+    You are a UI designer. Generate an A2UI component tree for displaying book search results.
+
+    Available fields (only these exist — do not invent others):
+    {schemaDescription}
+
+    Design requirements:
+    {designInstructions}
+
+    Return ONLY a JSON object matching this exact shape:
+    { "components": [ { "id": "...", "component": "...", ... } ] }
+
+    Rules:
+    - Use "path" bindings for ALL dynamic values: { "path": "fieldName" }
+    - NEVER use literal strings for data that comes from the API
+    - The root component must be a Card with id "root"
+    - Include a List component with children bound to { "path": "/books" }

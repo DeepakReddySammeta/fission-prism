@@ -12,11 +12,10 @@
  * distribute with a demo.
  */
 
-const GEOCODE_URL = 'https://geocoding-api.open-meteo.com/v1/search';
-const FORECAST_URL = 'https://api.open-meteo.com/v1/forecast';
+import { getApiConfig } from '../api-config/registry';
+import { executeApiEndpoint } from '../api-config/executor';
 
-/** A slow third party shouldn't be able to hang a request indefinitely. */
-const REQUEST_TIMEOUT_MS = 6000;
+const API_NAME = 'weather-api';
 
 export type ResolvedPlace = {
   name: string;
@@ -110,21 +109,6 @@ function conditionFor(code: unknown): string {
   return typeof code === 'number' ? (WMO_CONDITIONS[code] ?? `Code ${code}`) : 'Unknown';
 }
 
-/** Fetch with a timeout, so a slow third party cannot hang a run indefinitely. */
-async function fetchJson(url: string): Promise<unknown> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-  try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) {
-      throw new Error(`Weather provider returned ${response.status}`);
-    }
-    return await response.json();
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 /** GeoNames feature codes for whole countries/political entities (PCLI,
  * PCLD, PCLF, PCLS, PCLIX, PCL itself) — a weather reading for "India" as a
  * single point is meaningless, so a match at this level is treated as no
@@ -139,8 +123,19 @@ export async function resolvePlace(query: string): Promise<ResolvedPlace | undef
   const override = KNOWN_PLACE_OVERRIDES[query.trim().toLowerCase()];
   if (override) return override;
 
-  const url = `${GEOCODE_URL}?name=${encodeURIComponent(query)}&count=5&language=en&format=json`;
-  const payload = (await fetchJson(url)) as { results?: Record<string, unknown>[] };
+  const config = getApiConfig(API_NAME);
+  if (!config) {
+    throw new Error(`API config "${API_NAME}" not registered. Did you call registerApiConfigs()?`);
+  }
+
+  const resultArray = (await executeApiEndpoint(config, 'geocode', {
+    name: query,
+    count: 5,
+    language: 'en',
+    format: 'json',
+  })) as unknown[];
+
+  const payload = resultArray[0] as { results?: Record<string, unknown>[] };
   const match = (payload.results ?? []).find((m) => !isCountryLevel(m));
   if (!match) return undefined;
 
@@ -158,19 +153,26 @@ export async function loadWeather(query: string): Promise<WeatherReading | undef
   const place = await resolvePlace(query);
   if (!place) return undefined;
 
-  const url =
-    `${FORECAST_URL}?latitude=${place.latitude}&longitude=${place.longitude}` +
-    '&current=temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m' +
-    '&daily=weather_code,temperature_2m_max,temperature_2m_min&forecast_days=4&timezone=auto';
+  // Use the registry-configured API for the forecast
+  const config = getApiConfig(API_NAME);
+  if (!config) {
+    throw new Error(`API config "${API_NAME}" not registered. Did you call registerApiConfigs()?`);
+  }
 
-  const payload = (await fetchJson(url)) as {
+  const resultArray = (await executeApiEndpoint(config, 'forecast', {
+    latitude: place.latitude,
+    longitude: place.longitude,
+  })) as unknown[];
+
+  const data = resultArray[0] as {
     current?: Record<string, unknown>;
     daily?: Record<string, unknown[]>;
   };
-  const current = payload.current;
+
+  const current = data.current;
   if (!current) return undefined;
 
-  const daily = payload.daily ?? {};
+  const daily = data.daily ?? {};
   const dates = (daily.time ?? []) as string[];
 
   return {

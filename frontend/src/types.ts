@@ -19,7 +19,7 @@ export const CATALOG_ID = 'https://voyage.ai/catalogs/travel/v1';
 
 /* ---------------- Domain types (trip planning) ---------------- */
 
-export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations' | 'find_doctor';
+export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations' | 'find_doctor' | 'search_books';
 
 export interface ParsedIntent {
   intent: IntentKind;
@@ -29,7 +29,7 @@ export interface ParsedIntent {
    * other intent path (which does rely on it) can't accidentally forget it. */
   destination: string;
   durationNights?: number;
-  agents: Array<'flights' | 'hotels' | 'health'>;
+  agents: Array<'flights' | 'hotels' | 'health' | 'books'>;
   /** free-text constraint carried over from a refinement message, e.g. "cheaper", "5-star only" */
   refinement?: string;
   /** best-effort ISO dates (YYYY-MM-DD) extracted from the query, if present */

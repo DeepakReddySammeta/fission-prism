@@ -9,9 +9,10 @@ import type { ActionPayload, Envelope, FlightOption, HotelOption, ParsedIntent, 
 import { PORT, LLM_ENABLED, LLM_MODEL, LLM_PROVIDER, GOOGLE_CLIENT_ID, CORS_ORIGINS } from './config';
 import {
   parseIntent, detectMyRecordsIntent, detectExplorationIntent, detectAppointmentsQuery,
-  detectWeatherIntent,
+  detectWeatherIntent, detectBooksIntent,
   type MyRecordsIntent, type AppointmentsQuery,
 } from './agents/intent';
+import { searchBooks, buildBooksSurface, type Book } from './agents/books';
 import { getFlightOptions } from './agents/flights';
 import { getHotelOptions } from './agents/hotels';
 import { getDestinationSuggestions } from './agents/destinations';
@@ -33,6 +34,7 @@ import {
   appointmentsSurface, budgetBreakdownSurface, expenseLoggedSurface, savingsGoalSurface, savingsGoalsListSurface,
   financeSummarySurface, portfolioSurface, goalsAnalysisSurface, weatherSurface,
   expensesBreakdownSurface, cashFlowSurface, budgetUtilizationSurface, recentExpensesSurface,
+  booksSurface, bookDetailsSurface,
   inr, formatAppointmentDate, hotelImage, roomImage, destinationImage, flightImage, flightDetails, hotelDetails, cabinPriceMultiplier,
 } from './orchestrator/envelopes';
 import { buildSurface } from './orchestrator/uiAgent';
@@ -42,6 +44,8 @@ import {
 } from './db';
 import { newId, hashPassword, verifyPassword, signToken, toAuthUser, requireAuth, optionalAuth, type AuthUser } from './auth/auth';
 import { loadWeather } from './weather/weather';
+import { registerApiConfigs } from './api-config/registry';
+import { join } from 'path';
 
 /** Shared goal text for surfaces triggered from more than one place in this
  * file — same screen regardless of what led to it, so one goal string. */
@@ -63,6 +67,9 @@ function emitSurface(sessionId: string, key: string, goal: string, dataSource: (
 }
 
 const app = Fastify({ logger: false });
+
+// Auto-discover and register all API configs from backend/config/
+registerApiConfigs(join(__dirname, '../config'));
 
 // CORS_ORIGIN unset (local dev) → reflect any origin. Set to the deployed
 // frontend URL(s) in production and only those are allowed.
@@ -231,6 +238,23 @@ app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth },
       intent: 'refine', destination: '', agents: [],
       summary: `Here are the rooms at ${match.hotel.name}, in ${titleCase(match.destination)}.`,
     };
+    return { sessionId: session.id, intent: session.pendingIntent };
+  }
+
+  // "Find books about X" / "search for Y books" / "books by Z" — a live
+  // OpenLibrary search, not a flights/hotels search. Checked before parseIntent
+  // (same reasoning as the detectors above): fast, deterministic, and avoids
+  // the trip-planning prompt ever having to parse "books about astronomy" as
+  // a literal destination.
+  const booksQuery = detectBooksIntent(query);
+  if (booksQuery) {
+    const session = createSession();
+    session.pendingIntent = {
+      intent: 'search_books', destination: '', agents: ['books'],
+      summary: 'Here are some books I found — take a look at the options below.',
+    };
+    // Carry the search query through so runAgents can run the search.
+    (session.pendingIntent as any).booksQuery = booksQuery.query;
     return { sessionId: session.id, intent: session.pendingIntent };
   }
 
@@ -1434,6 +1458,19 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
       `Show doctor matches for specialty "${specialty}": name, qualifications, expertise, languages, hospital, rating, consultation fee, photo. Available actions: viewDoctorProfile, context { name }; startDoctorBooking, context { name }.`,
       () => doctorsSurface('health', specialty, matches));
   }
+
+  // search_books: async OpenLibrary search, emitted when results are ready.
+  // Uses YAML-driven config for the API call + optional LLM-generated UI.
+  if (intent.agents.includes('books')) {
+    const q = (intent as any).booksQuery || '';
+    searchBooks(q, 12).then(async ({ books, source }) => {
+      const s = getSession(sessionId);
+      if (!s) return;
+      s.booksCache = new Map(books.map((b) => [b.id, b]));
+      const envelopes = await buildBooksSurface('books', books, source);
+      emitAll(sessionId, envelopes);
+    });
+  }
 }
 
 app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHandler: optionalAuth }, async (req, reply) => {
@@ -1601,6 +1638,13 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
   // synthesizes a genuinely new chat turn instead (see detectDoctorLookup
   // in agents/health.ts), and there's no "back" button left to fire the
   // third (see doctorProfileSurface's own comment on why).
+
+  if (name === 'viewBookDetails') {
+    const book = session.booksCache.get(context.bookId) as Book | undefined;
+    if (book) {
+      emitAll(sessionId, bookDetailsSurface('books', book));
+    }
+  }
 
   if (name === 'confirmAppointment') {
     const doctor = session.activeDoctorId ? (session.doctorsCache.get(session.activeDoctorId) as DoctorMatch | undefined) : undefined;

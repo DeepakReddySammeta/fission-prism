@@ -1,0 +1,110 @@
+openapi: 3.0.3
+info:
+  title: Open-Meteo Weather
+  description: Live weather from Open-Meteo (no API key required)
+  version: 1.0.0
+servers:
+  - url: https://api.open-meteo.com/v1
+
+paths:
+  /search:
+    servers:
+      - url: https://geocoding-api.open-meteo.com/v1
+    get:
+      operationId: geocode
+      summary: Geocode a place name to coordinates
+      parameters:
+        - name: name
+          in: query
+          required: true
+          description: Place name to search
+          schema:
+            type: string
+        - name: count
+          in: query
+          description: Max number of results
+          schema:
+            type: integer
+            default: 5
+        - name: language
+          in: query
+          description: Language for results
+          schema:
+            type: string
+            default: en
+        - name: format
+          in: query
+          description: Response format
+          schema:
+            type: string
+            default: json
+      responses:
+        "200":
+          description: Geocoding results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      type: object
+
+  /forecast:
+    get:
+      operationId: forecast
+      summary: Get weather forecast for a location
+      parameters:
+        - name: latitude
+          in: query
+          required: true
+          description: Latitude of the location
+          schema:
+            type: number
+        - name: longitude
+          in: query
+          required: true
+          description: Longitude of the location
+          schema:
+            type: number
+        - name: current
+          in: query
+          description: Comma-separated list of current weather variables
+          schema:
+            type: string
+            default: "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,weather_code,wind_speed_10m"
+        - name: daily
+          in: query
+          description: Comma-separated list of daily weather variables
+          schema:
+            type: string
+            default: "weather_code,temperature_2m_max,temperature_2m_min"
+        - name: forecast_days
+          in: query
+          description: Number of forecast days
+          schema:
+            type: integer
+            default: 4
+        - name: timezone
+          in: query
+          description: Timezone for the forecast
+          schema:
+            type: string
+            default: auto
+      responses:
+        "200":
+          description: Weather forecast data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current:
+                    type: object
+                  daily:
+                    type: object
+
+x-a2ui-response:
+  rootPath: "."
+  rawSchema: []

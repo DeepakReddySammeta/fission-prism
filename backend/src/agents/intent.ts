@@ -219,6 +219,23 @@ function extractWantsBooking(q: string): boolean {
   return /\bbook(?:ing)?\b|\breserve\b/i.test(q);
 }
 
+/** Detect a book-search request: "find books about X", "search for Y books",
+ * "books by Z", "recommend books on astronomy", etc.
+ * Returns the query string to pass to the books agent, or undefined. */
+export function detectBooksIntent(query: string): { query: string } | undefined {
+  const q = query.toLowerCase().trim();
+  const m = q.match(/\b(?:find|search|look for|get|show|recommend)\s+(?:me\s+)?(?:books?\s+(?:about|on|for|by)\s+(.+)|(.+)\s+books?)/i);
+  if (m) return { query: (m[1] || m[2]).trim() };
+  if (/\bbooks?\s+(?:about|on|for|by)\b/i.test(q)) {
+    const aboutMatch = q.match(/\bbooks?\s+(?:about|on|for|by)\s+(.+)/i);
+    if (aboutMatch) return { query: aboutMatch[1].trim() };
+  }
+  if (/\b(?:books?|reading|literature|novels?)\b/i.test(q)) {
+    return { query: q.replace(/\b(find|search|look for|get|show|recommend|books?|reading|literature|novels?)\b/gi, '').trim() };
+  }
+  return undefined;
+}
+
 const NUMBER_WORDS: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10,
 };
