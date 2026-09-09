@@ -96,7 +96,7 @@ User query
    │
    ▼
 Intent parser  ──▶  plan_trip / browse_flights / browse_hotels / find_doctor / refine
-   │                 (Groq or AWS Bedrock, per LLM_PROVIDER; heuristic fallback)
+   │                 (Claude on AWS Bedrock; heuristic fallback)
    │
    ├─ find_doctor ──▶ Health agent: LLM maps symptom → specialty, then a
    │                  deterministic match over curated doctors + hospitals
@@ -172,7 +172,7 @@ backend/
                           envelopes.ts (A2UI UI trees), trust.ts (allowlist),
                           hotelIndex.ts (name lookup for "View rooms at X" / "details of X hotel")
   src/llm/                index.ts (generateJSON — the single function every content agent calls),
-                          groq.ts / bedrock.ts (interchangeable backends, pick via LLM_PROVIDER)
+                          bedrock.ts (the Claude-on-Bedrock backend)
   src/mock/               curated datasets used both as the no-LLM fallback and as the
                           fixed source of truth for doctors/hospitals/finance
   src/weather/weather.ts  live Open-Meteo lookup — deliberately outside the agent pipeline
@@ -329,7 +329,7 @@ Open **<http://localhost:5173>** and try:
 
 By default every agent runs on **deterministic mock data** — same shapes,
 same flow, no API key needed. `GET /api/health` reports `{"llm":"mock"}` in
-this mode (or `{"llm":"groq"|"bedrock","model":"…"}` once configured).
+this mode (or `{"llm":"bedrock","model":"…"}` once configured).
 
 ### Enabling live LLM generation (optional)
 
@@ -339,16 +339,16 @@ one narrow step (symptom → specialty string) and is otherwise a deterministic
 lookup; the finance agent uses no LLM at all. So a missing key degrades the
 travel demo to fixed sample data — it doesn't break health or finance.
 
-The content agents talk to one of two interchangeable providers, selected by
-`LLM_PROVIDER` in `backend/.env` (`cp .env.example .env` first):
+The content agents talk to a Claude model on AWS Bedrock. Configure it in
+`backend/.env` (`cp .env.example .env` first): set `AWS_ACCESS_KEY_ID`,
+`AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and optionally `BEDROCK_MODEL`
+(default `us.anthropic.claude-haiku-4-5-20251001-v1:0`). Use
+`AWS_SESSION_TOKEN` too if your credentials are temporary/STS, or set
+`AWS_USE_IAM_ROLE=true` on AWS to use the instance / task role instead.
 
-- **`groq`** (default) — get a free key at
-  [console.groq.com](https://console.groq.com) (no card required) and set
-  `GROQ_API_KEY`.
-- **`bedrock`** — a Claude model on AWS Bedrock. Set `LLM_PROVIDER=bedrock`,
-  `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, and optionally
-  `BEDROCK_MODEL` (default `us.anthropic.claude-sonnet-5`). Use
-  `AWS_SESSION_TOKEN` too if your credentials are temporary/STS.
+The IAM principal needs `bedrock:InvokeModel` on the model's inference
+profile. Without it every call returns 403 and the app silently serves mock
+data — `[llm#N] failed … 403` in the backend log is the tell.
 
 Restart the backend (`npm run dev`). The startup log will say
 `[llm] enabled ... via <provider>` instead of `disabled`, and `GET /api/health`
@@ -446,8 +446,8 @@ envelope allowlist), which is the part this project exists to demonstrate.
   - `DATABASE_PATH` — point at a mounted persistent disk (e.g. `/data/data.db`)
     so accounts and saved data survive a redeploy; without a disk the free
     tier wipes the SQLite file on every restart.
-  - `GROQ_API_KEY` (or the `LLM_PROVIDER=bedrock` + AWS vars) for live
-    generation — optional; it falls back to mock data otherwise.
+  - the AWS vars (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`)
+    for live generation — optional; it falls back to mock data otherwise.
 
   Render's free tier is used over Vercel serverless functions specifically
   because this app holds a long-lived SSE connection per session — serverless

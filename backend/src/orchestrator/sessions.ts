@@ -172,6 +172,10 @@ export interface Session {
    * "Schedule a trip" both re-ask as a fresh chat turn rather than mutating
    * this session, same reasoning as pendingMyRecords above. */
   pendingExploration?: { region: string; season?: string; durationNights?: number };
+  /** Set for a chat-asked "what's the weather in X" query — consumed once,
+   * when the SSE stream connects (see runWeather in server.ts), same
+   * deferred-until-SSE-connects reasoning as pendingExploration above. */
+  pendingWeather?: { place: string };
   /** find_doctor: the matched list from this run, keyed by doctor id, so
    * viewDoctorProfile/confirmAppointment can look one up without re-running
    * the (pure, cheap) match — same shape as hotelsCache/flightsCache. */

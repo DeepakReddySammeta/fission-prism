@@ -1,5 +1,5 @@
 import type {
-  ComponentDef, DestinationSuggestion, DoctorOption, Envelope, FlightOption, HospitalOption, HotelOption, RoomOption, TripSummary,
+  ComponentDef, DestinationSuggestion, DoctorOption, Envelope, FlightOption, HospitalOption, HotelOption, RoomOption, TripSummary, WeatherReading,
 } from '../types';
 import type { DoctorMatch, BookingHints } from '../agents/health';
 import { APPOINTMENT_TIME_SLOTS } from '../agents/health';

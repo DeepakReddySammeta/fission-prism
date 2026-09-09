@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "catalog:spec": "tsx scripts/emit-catalog-spec.ts"
   },
   "dependencies": {
     "@a2ui/react": "^0.10.2",
