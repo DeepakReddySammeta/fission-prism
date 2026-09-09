@@ -60,6 +60,7 @@ export const TextApi = api('Text', {
 export const ImageApi = api('Image', {
   url: DYN.optional().describe('Absolute image URL. Falls back to a placeholder when empty or broken.'),
   fit: z.enum(['cover', 'contain']).optional().describe('CSS object-fit. Defaults to cover.'),
+  height: z.number().optional().describe('Pixels. Overrides the default thumbnail height — use it for a photo that should read larger, e.g. a profile picture. Width follows the parent: put the Image in a Column with align "stretch" for it to fill full-bleed, or beside other content in a Row for it to size naturally.'),
 }, 'A photo with built-in loading shimmer and error fallback.');
 
 export const IconApi = api('Icon', {

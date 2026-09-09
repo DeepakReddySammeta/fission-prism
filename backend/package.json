@@ -6,10 +6,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "goldens": "tsx src/tools/golden.ts",
-    "ui:eval": "tsx src/tools/uiEval.ts",
-    "ui:selfcheck": "tsx src/tools/uiAgent.selfcheck.ts",
-    "catalog:guard": "tsx src/tools/catalogGuard.ts"
+    "ui:selfcheck": "tsx src/tools/uiAgent.selfcheck.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^0.33.3",

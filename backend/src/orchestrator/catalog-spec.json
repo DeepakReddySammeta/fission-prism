@@ -368,6 +368,12 @@
           "type": "\"cover\" | \"contain\"",
           "required": false,
           "doc": "CSS object-fit. Defaults to cover."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels, and fills 100% of the available width. Overrides the default thumbnail size — use it for a photo that should read larger, e.g. a profile picture."
         }
       ]
     },

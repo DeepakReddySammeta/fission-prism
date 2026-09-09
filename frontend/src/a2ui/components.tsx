@@ -154,18 +154,25 @@ const Text = impl(TextApi, ({ props }) => {
   return <div className={`a2-text a2-${variant}`}>{text}</div>;
 });
 
-function A2Image({ url, fit, componentId }: { url: string; fit?: string; componentId?: string }) {
+function A2Image({ url, fit, height, componentId }: { url: string; fit?: string; height?: number; componentId?: string }) {
   const [state, setState] = useState<'loading' | 'loaded' | 'error'>(url ? 'loading' : 'error');
   useEffect(() => setState(url ? 'loading' : 'error'), [url]);
+  // Height only, not width: a Row-nested photo (beside text) and a
+  // Column-nested hero photo (above stacked text) want opposite widths, and
+  // this component can't see which parent it's in — width:100% here forced
+  // every image wide regardless, squeezing Row siblings into overflow. A
+  // Column wanting full-bleed width gets it for free via its own
+  // align:"stretch", the layout mechanism that already exists for this.
+  const sizeStyle = height ? { height } : undefined;
   if (!url || state === 'error') {
     return (
-      <div className="a2-img a2-img-fallback" data-cid={componentId} aria-hidden>
+      <div className="a2-img a2-img-fallback" data-cid={componentId} style={sizeStyle} aria-hidden>
         <span>{'🏙'}</span>
       </div>
     );
   }
   return (
-    <div className="a2-img-wrap" data-cid={componentId}>
+    <div className="a2-img-wrap" data-cid={componentId} style={sizeStyle}>
       {state === 'loading' && <div className="a2-img-shimmer" />}
       <img
         className="a2-img"
@@ -181,7 +188,7 @@ function A2Image({ url, fit, componentId }: { url: string; fit?: string; compone
 }
 
 const Image = impl(ImageApi, ({ props, context }) => (
-  <A2Image url={props.url ? String(props.url) : ''} fit={props.fit} componentId={context.componentModel.id} />
+  <A2Image url={props.url ? String(props.url) : ''} fit={props.fit} height={props.height ? Number(props.height) : undefined} componentId={context.componentModel.id} />
 ));
 
 const Icon = impl(IconApi, ({ props }) => {

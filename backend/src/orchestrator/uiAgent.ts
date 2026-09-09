@@ -16,8 +16,6 @@
  * for its UI and repeat runs stay visually stable. A genuinely new shape of
  * answer is what triggers a fresh generation.
  */
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { generateJSON } from '../llm';
 import { A2UI_VERSION, CATALOG_ID } from '../types';
 import type { ComponentDef, Envelope } from '../types';
@@ -79,8 +77,13 @@ RULES
 2. Exactly one component has id "root" and component "Card". Everything else hangs off it.
 3. Every id is unique, and every id you reference (children, child, panels) must be defined in the same array. No orphans: everything must be reachable from "root".
 4. NEVER inline a data value. Show data by binding it to the prop that displays it: { "id": "price", "component": "Text", "text": { "path": "/flights/0/price" } }. A bare "path" is NOT a prop on display components — { "component": "Text", "path": "price" } renders nothing. Only use props listed for that component in the catalog above; any other prop is silently ignored. Text you invent yourself is only for labels, headings and captions.
-5. For a collection, template it: give the List/Column a children of { "componentId": "<row component id>", "path": "/theArray" }, and inside that row component reference fields by RELATIVE path, e.g. { "path": "airline" }. Define the row component once.
-6. Use the data model given below. Only bind paths that actually exist in it.
+5. For a collection, template it: give the List/Column a children of { "componentId": "<row component id>", "path": "/theArray" }, and inside that row component reference fields by RELATIVE path, e.g. { "path": "airline" }. Define the row component once. The row id you name in "componentId" is that component's ONLY parent — do not also list it in any other component's "children" array, and do not skip setting "children" this way and just define the row floating with nothing pointing at it (that is an orphan, and the whole screen is rejected). Worked example, a list of cards each showing a name and a price:
+{ "id": "root", "component": "Card", "child": "list" },
+{ "id": "list", "component": "List", "children": { "componentId": "row", "path": "/items" } },
+{ "id": "row", "component": "Column", "gap": 8, "children": ["rowName", "rowPrice"] },
+{ "id": "rowName", "component": "Text", "variant": "h3", "text": { "path": "name" } },
+{ "id": "rowPrice", "component": "Text", "text": { "call": "formatCurrency", "args": { "value": { "path": "price" }, "currency": "INR" } } }
+6. Use the data model given below. Only bind paths that actually exist in it. Paths are "/"-separated, never dot-separated: a nested field is { "path": "hospital/name" }, NOT "hospital.name".
 7. Format every raw number you display: currency through formatCurrency, minute counts through formatDuration, or a component's own "format" prop where it has one. Never put a bare number on screen.
 8. Prefer the specific component over a generic one: Metric for a headline figure, Table for genuinely tabular records, a chart for a series, Badge for status. Do not build a table out of Rows, and do not build a metric out of two Texts.
 9. Buttons carry actions as { "event": { "name": "...", "context": { ... } } }. Only use action names the goal explicitly lists.
@@ -280,26 +283,6 @@ export const _internals = { INSTRUCTIONS, shapeOf, renderCatalog };
 
 /* --------------------------- server integration --------------------------- */
 
-/**
- * Render layouts already generated and saved under goldens/generated instead of
- * calling the model. Set UI_AGENT_REPLAY=1 to review real model output in the
- * running app without spending a call on every page load — and to see generated
- * screens at all when the provider is unreachable.
- */
-const REPLAY = /^(1|true|yes)$/i.test(process.env.UI_AGENT_REPLAY || '');
-const REPLAY_DIR = join(__dirname, '../../goldens/generated');
-
-function replayLayout(key: string): ComponentDef[] | null {
-  const file = join(REPLAY_DIR, `${key}.run1.json`);
-  if (!existsSync(file)) return null;
-  try {
-    const components = JSON.parse(readFileSync(file, 'utf8'));
-    return Array.isArray(components) && components.length ? components : null;
-  } catch {
-    return null;
-  }
-}
-
 /** The data model a surface's envelopes write, assembled the way the client
  * will see it — so bindings are validated against the real paths. */
 function dataModelOf(envelopes: Envelope[]): Record<string, any> {
@@ -342,23 +325,10 @@ function unavailableLayout(): ComponentDef[] {
 export async function buildSurface(key: string, goal: string, dataSource: () => Envelope[]): Promise<Envelope[]> {
   const envelopes = dataSource();
   const data = dataModelOf(envelopes);
-  let components: ComponentDef[] | null = null;
-
-  if (REPLAY) {
-    components = replayLayout(key);
-    if (components) {
-      const { ok, errors } = validateLayout(components, data);
-      if (!ok) {
-        console.warn(`[uiAgent] replayed layout for "${key}" is invalid against live data: ${errors.slice(0, 3).join('; ')}`);
-        components = null;
-      }
-    }
-  } else {
-    components = await generateLayout({ goal: `${key}: ${goal}`, data });
-  }
+  const components = await generateLayout({ goal: `${key}: ${goal}`, data });
 
   console.log(components
-    ? `[uiAgent] ${key}: rendering ${REPLAY ? 'replayed' : 'generated'} layout (${components.length} components)`
+    ? `[uiAgent] ${key}: rendering generated layout (${components.length} components)`
     : `[uiAgent] ${key}: generation unavailable, rendering fallback notice`);
   const tree = components ?? unavailableLayout();
   return envelopes.map((env) =>
