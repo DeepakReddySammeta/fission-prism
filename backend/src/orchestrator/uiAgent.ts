@@ -315,9 +315,11 @@ function unavailableLayout(): ComponentDef[] {
  * The one call site a surface needs: give it a `dataSource` that assembles
  * data (via the surface's existing envelope builder, for the scaffolding
  * envelopes and data model it already knows how to produce) and a `goal`
- * describing purpose and available actions. The component tree that builder
- * emits is never used — layout is the model's job alone. On any generation
- * failure this renders `unavailableLayout()`, not a hand-written screen.
+ * describing purpose and available actions. When the LLM returns a valid
+ * layout it replaces the hand-written one; on any generation failure it
+ * falls back to the original hand-written components rather than rendering
+ * an error notice, so the app stays usable when the LLM is disabled or
+ * unreachable.
  *
  * `goal` must not describe the arrangement: doing that is just hand-writing
  * the layout again in prose, and it would make the whole exercise unfalsifiable.
@@ -325,15 +327,18 @@ function unavailableLayout(): ComponentDef[] {
 export async function buildSurface(key: string, goal: string, dataSource: () => Envelope[]): Promise<Envelope[]> {
   const envelopes = dataSource();
   const data = dataModelOf(envelopes);
-  const components = await generateLayout({ goal: `${key}: ${goal}`, data });
+  const generated = await generateLayout({ goal: `${key}: ${goal}`, data });
 
-  console.log(components
-    ? `[uiAgent] ${key}: rendering generated layout (${components.length} components)`
-    : `[uiAgent] ${key}: generation unavailable, rendering fallback notice`);
-  const tree = components ?? unavailableLayout();
-  return envelopes.map((env) =>
-    'updateComponents' in env
-      ? { ...env, updateComponents: { ...env.updateComponents, components: tree } }
-      : env,
-  );
+  if (generated) {
+    console.log(`[uiAgent] ${key}: rendering generated layout (${generated.length} components)`);
+    return envelopes.map((env) =>
+      'updateComponents' in env
+        ? { ...env, updateComponents: { ...env.updateComponents, components: generated } }
+        : env,
+    );
+  }
+
+  // Fall back to the hand-written layout the dataSource already produced.
+  console.log(`[uiAgent] ${key}: generation unavailable, keeping hand-written layout`);
+  return envelopes;
 }

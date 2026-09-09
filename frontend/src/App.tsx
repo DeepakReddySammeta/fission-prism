@@ -401,6 +401,11 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   const healthSurface = runtime.getSurface('health');
   // Book search results — list of books with cover, title, author, year.
   const booksSurface = runtime.getSurface('books');
+  // Live weather — its own surface, generated from the catalog like every
+  // other agent response (see weatherSurface in envelopes.ts), fired either
+  // standalone ("what's the weather in X") or as a cross-sell alongside a
+  // flights/hotels search.
+  const weatherSurface = runtime.getSurface('weather');
 
   const expectedAgents = intent?.agents || [];
   const flightsPending = expectedAgents.includes('flights') && !(flightsSurface && componentCount(flightsSurface) > 0);

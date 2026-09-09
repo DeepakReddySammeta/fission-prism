@@ -1921,3 +1921,60 @@ export function bookDetailsSurface(
     },
   ];
 }
+
+/* ---------------- Weather ---------------- */
+
+export function weatherSurface(surfaceId: string, reading: WeatherReading): Envelope[] {
+  const daily = reading.daily.map((d) => ({
+    ...d,
+    dayLabel: new Date(`${d.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short' }),
+    rangeLabel: `${Math.round(d.minC)}° – ${Math.round(d.maxC)}°`,
+  }));
+
+  const components: ComponentDef[] = [
+    { id: 'root', component: 'Card', child: 'body' },
+    {
+      id: 'body', component: 'Column', gap: 14,
+      children: ['head', 'temp_row', 'detail_row', 'divider_1', 'forecast_label', 'forecast_list', 'provider_line'],
+    },
+    { id: 'head', component: 'Text', variant: 'h2', text: `Weather in ${reading.place}` },
+    {
+      id: 'temp_row', component: 'Row', gap: 16, align: 'center', children: ['temp_metric', 'condition_text'],
+    },
+    {
+      id: 'temp_metric', component: 'Metric',
+      label: 'Temperature',
+      value: `${Math.round(reading.temperatureC)}°C`,
+      delta: `Feels like ${Math.round(reading.feelsLikeC)}°C`,
+    },
+    { id: 'condition_text', component: 'Text', variant: 'h3', text: reading.condition },
+    {
+      id: 'detail_row', component: 'Row', gap: 12, children: ['humidity_badge', 'wind_badge'],
+    },
+    { id: 'humidity_badge', component: 'Badge', tone: 'neutral', text: `Humidity ${reading.humidityPercent}%` },
+    { id: 'wind_badge', component: 'Badge', tone: 'neutral', text: `Wind ${Math.round(reading.windKph)} km/h` },
+    { id: 'divider_1', component: 'Divider' },
+    { id: 'forecast_label', component: 'Text', variant: 'caption', text: 'Forecast' },
+    {
+      id: 'forecast_list', component: 'List',
+      children: { path: '/daily', componentId: 'forecast_row' },
+    },
+    {
+      id: 'forecast_row', component: 'Column', gap: 4, align: 'center',
+      children: ['fc_day', 'fc_range', 'fc_condition'],
+    },
+    { id: 'fc_day', component: 'Text', variant: 'caption', text: { path: 'dayLabel' } },
+    { id: 'fc_range', component: 'Text', variant: 'body', text: { path: 'rangeLabel' } },
+    { id: 'fc_condition', component: 'Text', variant: 'caption', text: { path: 'condition' } },
+    {
+      id: 'provider_line', component: 'Text', variant: 'caption',
+      text: `Live reading from ${reading.provider} — not a saved trip record.`,
+    },
+  ];
+
+  return [
+    createSurface(surfaceId, 'Weather', '#3b82f6'),
+    { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
+    updateData(surfaceId, '/daily', daily),
+  ];
+}
