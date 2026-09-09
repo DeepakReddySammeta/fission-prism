@@ -59,6 +59,11 @@ export class A2uiRuntime {
       try {
         this.processor.processMessages([msg as any]);
       } catch (err) {
+        // A rejected envelope leaves its surface empty and its skeleton
+        // spinning forever. Silence here means that looks identical to a slow
+        // network, in the browser and in the logs alike — so say what broke.
+        const kind = Object.keys(msg).find((k) => k !== 'version');
+        console.error(`[a2ui] rejected ${kind} envelope`, err, msg);
       }
     }
     this.touch();

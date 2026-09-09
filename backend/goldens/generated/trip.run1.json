@@ -1,0 +1,106 @@
+[
+  {
+    "id": "root",
+    "component": "Card",
+    "title": "Trip Confirmation",
+    "child": "content"
+  },
+  {
+    "id": "content",
+    "component": "Column",
+    "children": [
+      "heading",
+      "guestRow",
+      "statusRow",
+      "costRow",
+      "doneButton"
+    ],
+    "gap": 8
+  },
+  {
+    "id": "heading",
+    "component": "Text",
+    "text": "Trip Confirmation",
+    "variant": "h2"
+  },
+  {
+    "id": "guestRow",
+    "component": "Row",
+    "children": [
+      "guestLabel",
+      "guestValue"
+    ]
+  },
+  {
+    "id": "guestLabel",
+    "component": "Text",
+    "text": "Guest:",
+    "variant": "body"
+  },
+  {
+    "id": "guestValue",
+    "component": "Text",
+    "text": {
+      "path": "/guestName"
+    },
+    "variant": "body"
+  },
+  {
+    "id": "statusRow",
+    "component": "Row",
+    "children": [
+      "statusLabel",
+      "statusBadge"
+    ]
+  },
+  {
+    "id": "statusLabel",
+    "component": "Text",
+    "text": "Status:",
+    "variant": "body"
+  },
+  {
+    "id": "statusBadge",
+    "component": "Badge",
+    "text": "Confirmed",
+    "tone": "success"
+  },
+  {
+    "id": "costRow",
+    "component": "Row",
+    "children": [
+      "costLabel",
+      "costValue"
+    ]
+  },
+  {
+    "id": "costLabel",
+    "component": "Text",
+    "text": "Total Cost:",
+    "variant": "body"
+  },
+  {
+    "id": "costValue",
+    "component": "Text",
+    "text": "$0",
+    "variant": "body"
+  },
+  {
+    "id": "doneButton",
+    "component": "Button",
+    "child": "doneLabel",
+    "variant": "primary",
+    "action": {
+      "event": {
+        "name": "goHome",
+        "context": {}
+      }
+    }
+  },
+  {
+    "id": "doneLabel",
+    "component": "Text",
+    "text": "Done",
+    "variant": "body"
+  }
+]

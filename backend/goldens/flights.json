@@ -1,0 +1,291 @@
+[
+  {
+    "version": "v0.9.1",
+    "createSurface": {
+      "surfaceId": "flights",
+      "catalogId": "https://voyage.ai/catalogs/travel/v1",
+      "theme": {
+        "primaryColor": "#f25011",
+        "agentDisplayName": "Flight Finder"
+      },
+      "sendDataModel": false
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateComponents": {
+      "surfaceId": "flights",
+      "components": [
+        {
+          "id": "root",
+          "component": "Card",
+          "child": "body"
+        },
+        {
+          "id": "body",
+          "component": "Column",
+          "children": [
+            "head",
+            "list"
+          ]
+        },
+        {
+          "id": "head",
+          "component": "Text",
+          "variant": "h2",
+          "text": "Flights"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "children": {
+            "path": "/flights",
+            "componentId": "flight_row"
+          }
+        },
+        {
+          "id": "flight_row",
+          "component": "Row",
+          "align": "center",
+          "gap": 16,
+          "children": [
+            "fr_logo",
+            "fr_body",
+            "fr_action"
+          ]
+        },
+        {
+          "id": "fr_logo",
+          "component": "Icon",
+          "label": {
+            "path": "code"
+          }
+        },
+        {
+          "id": "fr_body",
+          "component": "Column",
+          "weight": 1,
+          "gap": 6,
+          "children": [
+            "fr_top",
+            "fr_bottom"
+          ]
+        },
+        {
+          "id": "fr_top",
+          "component": "Row",
+          "align": "center",
+          "gap": 8,
+          "children": [
+            "fr_airline",
+            "fr_tag"
+          ]
+        },
+        {
+          "id": "fr_airline",
+          "component": "Text",
+          "variant": "h3",
+          "text": {
+            "path": "airline"
+          }
+        },
+        {
+          "id": "fr_tag",
+          "component": "Badge",
+          "tone": "brand",
+          "text": {
+            "path": "tag"
+          }
+        },
+        {
+          "id": "fr_bottom",
+          "component": "Row",
+          "align": "center",
+          "gap": 10,
+          "children": [
+            "fr_times",
+            "fr_duration",
+            "fr_stops"
+          ]
+        },
+        {
+          "id": "fr_times",
+          "component": "Text",
+          "variant": "mono",
+          "text": {
+            "path": "timeBlock"
+          }
+        },
+        {
+          "id": "fr_duration",
+          "component": "Text",
+          "variant": "caption",
+          "text": {
+            "call": "formatDuration",
+            "args": {
+              "value": {
+                "path": "durationMins"
+              }
+            }
+          }
+        },
+        {
+          "id": "fr_stops",
+          "component": "Badge",
+          "tone": {
+            "path": "stopsTone"
+          },
+          "text": {
+            "path": "stopsLabel"
+          }
+        },
+        {
+          "id": "fr_action",
+          "component": "Column",
+          "align": "end",
+          "gap": 4,
+          "children": [
+            "fr_price",
+            "fr_btn"
+          ]
+        },
+        {
+          "id": "fr_price",
+          "component": "Text",
+          "variant": "h3",
+          "text": {
+            "call": "formatCurrency",
+            "args": {
+              "value": {
+                "path": "price"
+              },
+              "currency": "INR"
+            }
+          }
+        },
+        {
+          "id": "fr_btn_label",
+          "component": "Text",
+          "text": "Select"
+        },
+        {
+          "id": "fr_btn",
+          "component": "Button",
+          "variant": "primary",
+          "child": "fr_btn_label",
+          "action": {
+            "event": {
+              "name": "selectFlight",
+              "context": {
+                "flightId": {
+                  "path": "id"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateDataModel": {
+      "surfaceId": "flights",
+      "path": "/flights",
+      "value": [
+        {
+          "id": "FL1363",
+          "airline": "Air India",
+          "flightNumber": "AI-101",
+          "from": "Hyderabad",
+          "to": "Goa",
+          "departTime": "20:00",
+          "arriveTime": "00:30",
+          "durationMins": 253,
+          "stops": 1,
+          "price": 3486,
+          "date": "2026-09-10",
+          "recommended": true,
+          "cabin": "Economy",
+          "baggageKg": 15,
+          "aircraft": "Airbus A321neo",
+          "layoverCity": "Delhi",
+          "code": "AI",
+          "tag": "Recommended",
+          "timeBlock": "20:00 → 00:30",
+          "stopsLabel": "1 stop",
+          "stopsTone": "neutral"
+        },
+        {
+          "id": "FL0388",
+          "airline": "IndiGo",
+          "flightNumber": "IN-100",
+          "from": "Hyderabad",
+          "to": "Goa",
+          "departTime": "06:00",
+          "arriveTime": "08:30",
+          "durationMins": 132,
+          "stops": 1,
+          "price": 3538,
+          "date": "2026-09-10",
+          "recommended": false,
+          "cabin": "Economy",
+          "baggageKg": 15,
+          "aircraft": "Boeing 737 MAX",
+          "layoverCity": "Bengaluru",
+          "code": "IN",
+          "tag": "",
+          "timeBlock": "06:00 → 08:30",
+          "stopsLabel": "1 stop",
+          "stopsTone": "neutral"
+        },
+        {
+          "id": "FL2801",
+          "airline": "Akasa Air",
+          "flightNumber": "AK-102",
+          "from": "Hyderabad",
+          "to": "Goa",
+          "departTime": "08:30",
+          "arriveTime": "11:00",
+          "durationMins": 215,
+          "stops": 1,
+          "price": 3975,
+          "date": "2026-09-10",
+          "recommended": false,
+          "cabin": "Economy",
+          "baggageKg": 15,
+          "aircraft": "Airbus A319",
+          "layoverCity": "Kolkata",
+          "code": "AK",
+          "tag": "",
+          "timeBlock": "08:30 → 11:00",
+          "stopsLabel": "1 stop",
+          "stopsTone": "neutral"
+        },
+        {
+          "id": "FL3386",
+          "airline": "Vistara",
+          "flightNumber": "VI-103",
+          "from": "Hyderabad",
+          "to": "Goa",
+          "departTime": "12:00",
+          "arriveTime": "13:00",
+          "durationMins": 83,
+          "stops": 0,
+          "price": 5868,
+          "date": "2026-09-10",
+          "recommended": false,
+          "cabin": "Economy",
+          "baggageKg": 15,
+          "aircraft": "ATR 72",
+          "layoverCity": null,
+          "code": "VI",
+          "tag": "Fastest",
+          "timeBlock": "12:00 → 13:00",
+          "stopsLabel": "Direct",
+          "stopsTone": "success"
+        }
+      ]
+    }
+  }
+]

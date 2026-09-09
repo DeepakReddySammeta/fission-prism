@@ -1,0 +1,875 @@
+{
+  "components": [
+    {
+      "name": "AreaChart",
+      "doc": "An area chart for a value over time.",
+      "props": [
+        {
+          "name": "data",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Array of rows, one per point on the x-axis."
+        },
+        {
+          "name": "index",
+          "type": "string",
+          "required": false,
+          "doc": "Row field for the x-axis. Defaults to \"label\"."
+        },
+        {
+          "name": "categories",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Row fields to plot as series, e.g. [\"income\",\"expenses\"]."
+        },
+        {
+          "name": "config",
+          "type": "object",
+          "required": false,
+          "doc": "Per-series display overrides, e.g. { income: { label: \"Income\" } }."
+        },
+        {
+          "name": "format",
+          "type": "\"inr\" | \"inrShort\" | \"percent\" | \"number\" | \"duration\"",
+          "required": false,
+          "doc": "Names a number formatter. inr = ₹1,23,456 · inrShort = ₹1.2L · percent · number · duration (from minutes)."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels. Defaults to 220."
+        },
+        {
+          "name": "showLegend",
+          "type": "boolean",
+          "required": false,
+          "doc": "Defaults to true; turn off for a single series."
+        }
+      ]
+    },
+    {
+      "name": "Badge",
+      "doc": "A compact status pill.",
+      "props": [
+        {
+          "name": "text",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Short label. Badges are for status and tags, never for sentences."
+        },
+        {
+          "name": "tone",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Semantic colour: brand | neutral | success | warning. Defaults to neutral. Bindable, so a row can colour its own badge from the data."
+        }
+      ]
+    },
+    {
+      "name": "Bar",
+      "doc": "A single inline progress bar. For a set of categories prefer BarChart.",
+      "props": [
+        {
+          "name": "value",
+          "type": "number | { path }",
+          "required": false,
+          "doc": "Percentage filled, 0-100."
+        },
+        {
+          "name": "tone",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Fill colour: brand | neutral | success | warning. Use warning when a limit is exceeded. Bindable, so a row can colour its own bar from the data."
+        },
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Caption above the track."
+        }
+      ]
+    },
+    {
+      "name": "BarChart",
+      "doc": "A bar chart comparing categories.",
+      "props": [
+        {
+          "name": "data",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Array of rows, one per point on the x-axis."
+        },
+        {
+          "name": "index",
+          "type": "string",
+          "required": false,
+          "doc": "Row field for the x-axis. Defaults to \"label\"."
+        },
+        {
+          "name": "categories",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Row fields to plot as series, e.g. [\"income\",\"expenses\"]."
+        },
+        {
+          "name": "config",
+          "type": "object",
+          "required": false,
+          "doc": "Per-series display overrides, e.g. { income: { label: \"Income\" } }."
+        },
+        {
+          "name": "format",
+          "type": "\"inr\" | \"inrShort\" | \"percent\" | \"number\" | \"duration\"",
+          "required": false,
+          "doc": "Names a number formatter. inr = ₹1,23,456 · inrShort = ₹1.2L · percent · number · duration (from minutes)."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels. Defaults to 220."
+        },
+        {
+          "name": "showLegend",
+          "type": "boolean",
+          "required": false,
+          "doc": "Defaults to true; turn off for a single series."
+        }
+      ]
+    },
+    {
+      "name": "Button",
+      "doc": "A button. The only way a generated layout sends anything back to the server.",
+      "props": [
+        {
+          "name": "child",
+          "type": "string",
+          "required": false,
+          "doc": "Component id of the label, normally a Text."
+        },
+        {
+          "name": "variant",
+          "type": "\"primary\" | \"outline\"",
+          "required": false,
+          "doc": "primary is the one real commit action on a screen; outline (the default) is everything else."
+        },
+        {
+          "name": "action",
+          "type": "{ event: { name, context } }",
+          "required": false,
+          "doc": "{ event: { name, context } } dispatched on click."
+        },
+        {
+          "name": "checks",
+          "type": "any[]",
+          "required": false,
+          "doc": "Validation rules; the button disables and explains itself while any fail."
+        }
+      ]
+    },
+    {
+      "name": "Card",
+      "doc": "The outermost surface. Every generated layout starts with exactly one Card whose id is \"root\".",
+      "props": [
+        {
+          "name": "child",
+          "type": "string",
+          "required": false,
+          "doc": "The single root child, almost always a Column."
+        },
+        {
+          "name": "title",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Optional card header title."
+        },
+        {
+          "name": "description",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Optional sub-line under the title."
+        }
+      ]
+    },
+    {
+      "name": "CheckBox",
+      "doc": "A single boolean toggle.",
+      "props": [
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Text beside the box."
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": false,
+          "doc": "Absolute data-model path this toggle reads and writes."
+        }
+      ]
+    },
+    {
+      "name": "ChoicePicker",
+      "doc": "A one-of-N picker rendered as a segmented control.",
+      "props": [
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "What is being chosen."
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": false,
+          "doc": "Absolute data-model path this picker reads and writes."
+        },
+        {
+          "name": "options",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Array of choices."
+        }
+      ]
+    },
+    {
+      "name": "Column",
+      "doc": "A vertical stack. The default container inside a Card.",
+      "props": [
+        {
+          "name": "children",
+          "type": "string[] | { componentId, path }",
+          "required": false,
+          "doc": "Child component ids, or { componentId, path } to template one child per row of an array."
+        },
+        {
+          "name": "gap",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels between children."
+        },
+        {
+          "name": "align",
+          "type": "\"start\" | \"center\" | \"end\" | \"stretch\"",
+          "required": false,
+          "doc": "Cross-axis alignment."
+        },
+        {
+          "name": "justify",
+          "type": "\"start\" | \"center\" | \"end\" | \"between\"",
+          "required": false,
+          "doc": "Main-axis distribution."
+        },
+        {
+          "name": "wrap",
+          "type": "boolean",
+          "required": false,
+          "doc": "Let children flow onto more than one line."
+        },
+        {
+          "name": "weight",
+          "type": "number",
+          "required": false,
+          "doc": "Flex grow inside a parent Row/Column."
+        },
+        {
+          "name": "panel",
+          "type": "boolean",
+          "required": false,
+          "doc": "Renders as an inset bordered panel — a section within a card."
+        },
+        {
+          "name": "columns",
+          "type": "number",
+          "required": false,
+          "doc": "Lay children out as an N-column grid instead of a flex line."
+        }
+      ]
+    },
+    {
+      "name": "Disclosure",
+      "doc": "Collapsed-by-default content behind a \"show more\" button.",
+      "props": [
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Button text shown while collapsed."
+        },
+        {
+          "name": "child",
+          "type": "string",
+          "required": false,
+          "doc": "Component id revealed when expanded."
+        }
+      ]
+    },
+    {
+      "name": "Divider",
+      "doc": "A horizontal rule separating sections inside a card.",
+      "props": []
+    },
+    {
+      "name": "Gauge",
+      "doc": "A radial gauge for a single percentage, e.g. budget utilisation.",
+      "props": [
+        {
+          "name": "value",
+          "type": "number | { path }",
+          "required": false,
+          "doc": "0-100."
+        },
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "What is being filled, e.g. \"Used\"."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels. Defaults to 200."
+        }
+      ]
+    },
+    {
+      "name": "Icon",
+      "doc": "A monogram avatar (with `label`) or a small named glyph (with `name`).",
+      "props": [
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Short text (airline/hotel/person) rendered as a colour-coded monogram avatar."
+        },
+        {
+          "name": "name",
+          "type": "\"plane\" | \"bed\" | \"wallet\" | \"check\" | \"map\"",
+          "required": false,
+          "doc": "Named glyph, used when `label` is absent."
+        }
+      ]
+    },
+    {
+      "name": "Image",
+      "doc": "A photo with built-in loading shimmer and error fallback.",
+      "props": [
+        {
+          "name": "url",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Absolute image URL. Falls back to a placeholder when empty or broken."
+        },
+        {
+          "name": "fit",
+          "type": "\"cover\" | \"contain\"",
+          "required": false,
+          "doc": "CSS object-fit. Defaults to cover."
+        }
+      ]
+    },
+    {
+      "name": "LineChart",
+      "doc": "A line chart for a trend over time.",
+      "props": [
+        {
+          "name": "data",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Array of rows, one per point on the x-axis."
+        },
+        {
+          "name": "index",
+          "type": "string",
+          "required": false,
+          "doc": "Row field for the x-axis. Defaults to \"label\"."
+        },
+        {
+          "name": "categories",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Row fields to plot as series, e.g. [\"income\",\"expenses\"]."
+        },
+        {
+          "name": "config",
+          "type": "object",
+          "required": false,
+          "doc": "Per-series display overrides, e.g. { income: { label: \"Income\" } }."
+        },
+        {
+          "name": "format",
+          "type": "\"inr\" | \"inrShort\" | \"percent\" | \"number\" | \"duration\"",
+          "required": false,
+          "doc": "Names a number formatter. inr = ₹1,23,456 · inrShort = ₹1.2L · percent · number · duration (from minutes)."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels. Defaults to 220."
+        },
+        {
+          "name": "showLegend",
+          "type": "boolean",
+          "required": false,
+          "doc": "Defaults to true; turn off for a single series."
+        }
+      ]
+    },
+    {
+      "name": "List",
+      "doc": "A repeated collection — bind `children` to `{ componentId, path }` to render one entry per row.",
+      "props": [
+        {
+          "name": "children",
+          "type": "string[] | { componentId, path }",
+          "required": false,
+          "doc": "REF:common_types.json#/$defs/ChildList"
+        },
+        {
+          "name": "layout",
+          "type": "\"stack\" | \"grid\"",
+          "required": false,
+          "doc": "Defaults to stack."
+        },
+        {
+          "name": "columns",
+          "type": "number",
+          "required": false,
+          "doc": "Column count when layout is grid."
+        },
+        {
+          "name": "scroll",
+          "type": "boolean",
+          "required": false,
+          "doc": "Caps height and scrolls instead of growing."
+        }
+      ]
+    },
+    {
+      "name": "Metric",
+      "doc": "A single headline figure with its label — the tile to reach for in a dashboard stat row.",
+      "props": [
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "What the number measures, e.g. \"Monthly income\"."
+        },
+        {
+          "name": "value",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "The number itself. Bind it rather than pre-formatting it."
+        },
+        {
+          "name": "delta",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "Optional change line, e.g. \"+12% vs last month\"."
+        },
+        {
+          "name": "tone",
+          "type": "\"neutral\" | \"success\" | \"warning\"",
+          "required": false,
+          "doc": "Colours the delta."
+        },
+        {
+          "name": "format",
+          "type": "\"inr\" | \"inrShort\" | \"percent\" | \"number\" | \"duration\"",
+          "required": false,
+          "doc": "How to render the value. One of: inr, inrShort, percent, number, duration."
+        }
+      ]
+    },
+    {
+      "name": "Pie",
+      "doc": "A donut/pie chart for part-to-whole splits. Best under about 7 slices.",
+      "props": [
+        {
+          "name": "data",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Array of rows."
+        },
+        {
+          "name": "dataKey",
+          "type": "string",
+          "required": false,
+          "doc": "Row field holding the numeric value. Defaults to \"value\"."
+        },
+        {
+          "name": "nameKey",
+          "type": "string",
+          "required": false,
+          "doc": "Row field holding the slice label. Defaults to \"label\"."
+        },
+        {
+          "name": "donut",
+          "type": "boolean",
+          "required": false,
+          "doc": "Ring rather than solid pie. Defaults to true."
+        },
+        {
+          "name": "format",
+          "type": "\"inr\" | \"inrShort\" | \"percent\" | \"number\" | \"duration\"",
+          "required": false,
+          "doc": "Names a number formatter. inr = ₹1,23,456 · inrShort = ₹1.2L · percent · number · duration (from minutes)."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels. Defaults to 220."
+        },
+        {
+          "name": "showLegend",
+          "type": "boolean",
+          "required": false,
+          "doc": "Defaults to true."
+        }
+      ]
+    },
+    {
+      "name": "RadarChart",
+      "doc": "A radar chart comparing several axes at once.",
+      "props": [
+        {
+          "name": "data",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Array of rows, one per point on the x-axis."
+        },
+        {
+          "name": "index",
+          "type": "string",
+          "required": false,
+          "doc": "Row field for the x-axis. Defaults to \"label\"."
+        },
+        {
+          "name": "categories",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Row fields to plot as series, e.g. [\"income\",\"expenses\"]."
+        },
+        {
+          "name": "config",
+          "type": "object",
+          "required": false,
+          "doc": "Per-series display overrides, e.g. { income: { label: \"Income\" } }."
+        },
+        {
+          "name": "format",
+          "type": "\"inr\" | \"inrShort\" | \"percent\" | \"number\" | \"duration\"",
+          "required": false,
+          "doc": "Names a number formatter. inr = ₹1,23,456 · inrShort = ₹1.2L · percent · number · duration (from minutes)."
+        },
+        {
+          "name": "height",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels. Defaults to 220."
+        },
+        {
+          "name": "showLegend",
+          "type": "boolean",
+          "required": false,
+          "doc": "Defaults to true; turn off for a single series."
+        }
+      ]
+    },
+    {
+      "name": "Row",
+      "doc": "A horizontal group. The default for putting a label and a value on one line.",
+      "props": [
+        {
+          "name": "children",
+          "type": "string[] | { componentId, path }",
+          "required": false,
+          "doc": "Child component ids, or { componentId, path } to template one child per row of an array."
+        },
+        {
+          "name": "gap",
+          "type": "number",
+          "required": false,
+          "doc": "Pixels between children."
+        },
+        {
+          "name": "align",
+          "type": "\"start\" | \"center\" | \"end\" | \"stretch\"",
+          "required": false,
+          "doc": "Cross-axis alignment."
+        },
+        {
+          "name": "justify",
+          "type": "\"start\" | \"center\" | \"end\" | \"between\"",
+          "required": false,
+          "doc": "Main-axis distribution."
+        },
+        {
+          "name": "wrap",
+          "type": "boolean",
+          "required": false,
+          "doc": "Let children flow onto more than one line."
+        },
+        {
+          "name": "weight",
+          "type": "number",
+          "required": false,
+          "doc": "Flex grow inside a parent Row/Column."
+        },
+        {
+          "name": "panel",
+          "type": "boolean",
+          "required": false,
+          "doc": "Renders as an inset bordered panel — a section within a card."
+        },
+        {
+          "name": "columns",
+          "type": "number",
+          "required": false,
+          "doc": "Lay children out as an N-column grid instead of a flex line."
+        }
+      ]
+    },
+    {
+      "name": "Slider",
+      "doc": "A range input for a coarse numeric value.",
+      "props": [
+        {
+          "name": "path",
+          "type": "string",
+          "required": false,
+          "doc": "Absolute data-model path this slider reads and writes."
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "required": false,
+          "doc": "Defaults to 0."
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": false,
+          "doc": "Defaults to 100."
+        }
+      ]
+    },
+    {
+      "name": "Stepper",
+      "doc": "A -/+ number stepper. The right control for small counts like travellers or rooms.",
+      "props": [
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "REF:common_types.json#/$defs/DynamicString|Represents a string"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": false,
+          "doc": "Absolute data-model path this stepper reads and writes."
+        },
+        {
+          "name": "min",
+          "type": "number",
+          "required": false,
+          "doc": "Lower bound. Defaults to 0."
+        },
+        {
+          "name": "max",
+          "type": "number",
+          "required": false,
+          "doc": "Upper bound. Defaults to 99."
+        },
+        {
+          "name": "step",
+          "type": "number",
+          "required": false,
+          "doc": "Increment per press. Defaults to 1."
+        }
+      ]
+    },
+    {
+      "name": "Table",
+      "doc": "A real data table. Prefer it over stacks of Rows whenever the content is genuinely tabular — several records sharing the same fields.",
+      "props": [
+        {
+          "name": "columns",
+          "type": "{ key, label, align, format }[]",
+          "required": false,
+          "doc": "Column definitions, left to right."
+        },
+        {
+          "name": "rows",
+          "type": "string | number | boolean | array | { path }",
+          "required": false,
+          "doc": "Array of row objects. Bind this to a data path."
+        }
+      ]
+    },
+    {
+      "name": "Tabs",
+      "doc": "Tabbed panels. Use only when content genuinely splits into alternatives the user picks between.",
+      "props": [
+        {
+          "name": "tabs",
+          "type": "{ id, label }[]",
+          "required": false,
+          "doc": "Tab order, left to right."
+        },
+        {
+          "name": "panels",
+          "type": "object",
+          "required": false,
+          "doc": "Map of tab id -> child component id."
+        },
+        {
+          "name": "defaultTab",
+          "type": "string",
+          "required": false,
+          "doc": "Tab id open on first render. Defaults to the first tab."
+        }
+      ]
+    },
+    {
+      "name": "Text",
+      "doc": "A run of text. The workhorse — headings, labels, values, captions all use it.",
+      "props": [
+        {
+          "name": "text",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "The string to render."
+        },
+        {
+          "name": "variant",
+          "type": "\"h1\" | \"h2\" | \"h3\" | \"body\" | \"caption\" | \"mono\"",
+          "required": false,
+          "doc": "Typographic role. h2 titles a card, caption is secondary/muted, mono is for codes and figures."
+        }
+      ]
+    },
+    {
+      "name": "TextField",
+      "doc": "A labelled text input bound to the data model.",
+      "props": [
+        {
+          "name": "label",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "REF:common_types.json#/$defs/DynamicString|Represents a string"
+        },
+        {
+          "name": "path",
+          "type": "string",
+          "required": false,
+          "doc": "Absolute data-model path this field reads and writes."
+        },
+        {
+          "name": "inputType",
+          "type": "\"text\" | \"number\" | \"date\" | \"email\" | \"tel\"",
+          "required": false,
+          "doc": "Native input type. Defaults to text."
+        },
+        {
+          "name": "placeholder",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "REF:common_types.json#/$defs/DynamicString|Represents a string"
+        },
+        {
+          "name": "min",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "REF:common_types.json#/$defs/DynamicString|Represents a string"
+        },
+        {
+          "name": "max",
+          "type": "string | { path }",
+          "required": false,
+          "doc": "REF:common_types.json#/$defs/DynamicString|Represents a string"
+        }
+      ]
+    }
+  ],
+  "functions": [
+    {
+      "name": "and",
+      "returnType": "boolean",
+      "args": [
+        "values"
+      ]
+    },
+    {
+      "name": "or",
+      "returnType": "boolean",
+      "args": [
+        "values"
+      ]
+    },
+    {
+      "name": "not",
+      "returnType": "boolean",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "required",
+      "returnType": "boolean",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "formatString",
+      "returnType": "any",
+      "args": [
+        "value"
+      ]
+    },
+    {
+      "name": "formatNumber",
+      "returnType": "string",
+      "args": [
+        "value",
+        "decimals",
+        "grouping"
+      ]
+    },
+    {
+      "name": "pluralize",
+      "returnType": "string",
+      "args": [
+        "value",
+        "zero",
+        "one",
+        "two",
+        "few",
+        "many",
+        "other"
+      ]
+    },
+    {
+      "name": "formatCurrency",
+      "returnType": "string",
+      "args": [
+        "value",
+        "currency"
+      ]
+    },
+    {
+      "name": "formatDuration",
+      "returnType": "string",
+      "args": [
+        "value"
+      ]
+    }
+  ]
+}

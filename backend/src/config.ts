@@ -1,24 +1,14 @@
-export const PORT = Number(process.env.PORT) || 8787;
-// Switched from the Fission Labs Anthropic-gateway (Moonshot Kimi K2 models)
-// back to Groq: the gateway's only available models were reasoning models
-// with unpredictable, often very long "thinking" time before any visible
-// output — 8s to 90s+ for the same prompt, with no reliable way to bound or
-// disable it. Groq runs standard (non-reasoning) models at genuinely fast,
-// consistent inference speed, which is what a live demo actually needs.
-export const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-// llama-3.3-70b-versatile (this project's original default) has since been
-// retired from Groq's catalog for this key — verified via client.models.list().
-// openai/gpt-oss-20b replaces it: measured at ~2.6s for the heaviest prompt
-// in the app (6 hotels x 5 rooms each), vs. 45-75s on the previous provider,
-// with comparably authentic output (real destination-specific names).
-export const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+// Loaded here rather than only in server.ts: config.ts is what actually reads
+// process.env, so anything importing it (tools, harnesses, scripts) needs the
+// .env already applied or it silently sees an unconfigured, LLM-disabled app.
+import 'dotenv/config';
 
-/**
- * Which LLM backend the agents talk to: 'groq' (default) or 'bedrock'.
- * Everything else about the app is identical between the two — the provider
- * only changes where `generateJSON` sends its request.
- */
-export const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'groq').toLowerCase();
+export const PORT = Number(process.env.PORT) || 8787;
+
+/** Groq API key/model — a fast, non-reasoning chat-completions provider with
+ * native JSON-object response mode. Selected when LLM_PROVIDER=groq. */
+export const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+export const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
 
 /** AWS Bedrock credentials + model — only read when LLM_PROVIDER=bedrock.
  * These mirror the standard AWS env var names so an existing AWS profile in
@@ -38,24 +28,40 @@ export const AWS_USE_IAM_ROLE = /^(1|true|yes)$/i.test(process.env.AWS_USE_IAM_R
 export const BEDROCK_MODEL =
   process.env.BEDROCK_MODEL || 'us.anthropic.claude-haiku-4-5-20251001-v1:0';
 
-/** True when the active provider has what it needs. Every agent falls back to
- * deterministic mock data when this is false, so the whole app runs with zero
- * setup regardless of which provider is selected. */
+/** Which LLM backend the agents talk to: 'groq' (default) or 'bedrock'.
+ * Everything else about the app is identical between the two — the provider
+ * only changes where `generateJSON` sends its request. */
+export const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'groq').toLowerCase();
+
+/** True when the active provider has the credentials it needs. Every agent
+ * falls back to deterministic mock data when this is false, so the whole app
+ * still runs with zero setup — just without live generation. */
 export const LLM_ENABLED =
   LLM_PROVIDER === 'bedrock'
-    ? AWS_USE_IAM_ROLE || Boolean(AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY)
+    ? (AWS_USE_IAM_ROLE || Boolean(AWS_ACCESS_KEY_ID && AWS_SECRET_ACCESS_KEY))
     : Boolean(GROQ_API_KEY);
+
+/**
+ * Output cap per LLM call. Explicit because the provider's own default is both
+ * invisible and small enough to truncate a large answer mid-JSON, which surfaces
+ * as an unexplained 400 rather than as a short response.
+ *
+ * A knob because it is not free: providers count `prompt + max_tokens` against
+ * a tokens-per-minute quota, so on a throttled account an over-generous cap can
+ * make a request fail the rate limit before it is even sent. 8192 suits Bedrock
+ * Claude on a normal quota; lower it if the account is tightly throttled.
+ */
+export const LLM_MAX_TOKENS = Number(process.env.LLM_MAX_TOKENS) || 8192;
 
 /** Human-readable name of the active model, for logs and /api/health. */
 export const LLM_MODEL = LLM_PROVIDER === 'bedrock' ? BEDROCK_MODEL : GROQ_MODEL;
 
 /**
  * Multiplier applied to every agent's per-call LLM timeout. The agent
- * timeouts (8–15s) were tuned for Groq's sub-3s inference; Claude on Bedrock
- * needs longer for the bulk-JSON prompts (6 hotels × 5 rooms), so without a
- * bump every Bedrock call times out and falls back to mock data. Haiku 4.5
- * (the default model) is fast enough at 2×; raise it for Sonnet or a slow
- * region, lower it for a snappier fall-through to mock data.
+ * timeouts (8-15s) were tuned for Groq's sub-3s inference; Claude on Bedrock
+ * routinely needs longer for the bulk-JSON prompts (6 hotels x 5 rooms), so
+ * without this every Bedrock call times out and falls back to mock data.
+ * Override with LLM_TIMEOUT_SCALE if your region/model is faster or slower.
  */
 export const LLM_TIMEOUT_SCALE = Number(
   process.env.LLM_TIMEOUT_SCALE || (LLM_PROVIDER === 'bedrock' ? 2 : 1),

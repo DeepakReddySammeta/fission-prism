@@ -1,5 +1,5 @@
 import type {
-  ComponentDef, DestinationSuggestion, DoctorOption, Envelope, FlightOption, HospitalOption, HotelOption, RoomOption, TripSummary,
+  ComponentDef, DestinationSuggestion, DoctorOption, Envelope, FlightOption, HospitalOption, HotelOption, RoomOption, TripSummary, WeatherReading,
 } from '../types';
 import type { DoctorMatch, BookingHints } from '../agents/health';
 import { APPOINTMENT_TIME_SLOTS } from '../agents/health';
@@ -1838,5 +1838,68 @@ export function goalsAnalysisSurface(
     createSurface(surfaceId, 'Goals Analysis', '#f25011'),
     { version: A2UI_VERSION, updateComponents: { surfaceId, components } },
     ...dataEnvelopes,
+  ];
+}
+
+/* ---------------- Weather ----------------
+ * The last surface that used to be its own hand-written React component
+ * (WeatherCard.tsx) with its own client-side fetch — now a real A2UI surface
+ * like every other agent response: data assembled here, layout composed by
+ * the model from the generic catalog. The updateComponents tree below is a
+ * placeholder only — buildSurface (see uiAgent.ts) always replaces it, never
+ * reads it. */
+
+const WEATHER_ICON: [test: (c: string) => boolean, emoji: string][] = [
+  [(c) => c.includes('thunder'), '⛈️'],
+  [(c) => c.includes('snow'), '❄️'],
+  [(c) => c.includes('drizzle') || c.includes('rain') || c.includes('shower'), '🌧️'],
+  [(c) => c.includes('fog') || c.includes('rime'), '🌫️'],
+  [(c) => c.includes('overcast'), '☁️'],
+  [(c) => c.includes('partly'), '⛅'],
+  [(c) => c.includes('clear'), '☀️'],
+];
+
+function weatherEmoji(condition: string): string {
+  const c = condition.toLowerCase();
+  return WEATHER_ICON.find(([test]) => test(c))?.[1] ?? '🌤️';
+}
+
+function weatherDayLabel(iso: string, index: number): string {
+  if (index === 0) return 'Today';
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(undefined, { weekday: 'short' });
+}
+
+export function weatherSurface(surfaceId: string, reading: WeatherReading): Envelope[] {
+  const data = {
+    place: reading.place,
+    temperatureC: Math.round(reading.temperatureC),
+    feelsLikeC: Math.round(reading.feelsLikeC),
+    condition: reading.condition,
+    icon: weatherEmoji(reading.condition),
+    humidityPercent: reading.humidityPercent,
+    windKph: Math.round(reading.windKph),
+    provider: reading.provider,
+    daily: reading.daily.map((d, i) => ({
+      ...d,
+      minC: Math.round(d.minC),
+      maxC: Math.round(d.maxC),
+      dayLabel: weatherDayLabel(d.date, i),
+      icon: weatherEmoji(d.condition),
+    })),
+  };
+  return [
+    createSurface(surfaceId, 'Weather', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Text', variant: 'body', text: { path: 'place' } },
+        ],
+      },
+    },
+    updateData(surfaceId, '/', data),
   ];
 }

@@ -5,8 +5,8 @@ import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { OAuth2Client } from 'google-auth-library';
-import type { ActionPayload, FlightOption, HotelOption, ParsedIntent, RoomOption, TripSummary } from './types';
-import { PORT, LLM_ENABLED, LLM_PROVIDER, LLM_MODEL, GOOGLE_CLIENT_ID, CORS_ORIGINS } from './config';
+import type { ActionPayload, Envelope, FlightOption, HotelOption, ParsedIntent, RoomOption, TripSummary } from './types';
+import { PORT, LLM_ENABLED, LLM_MODEL, LLM_PROVIDER, GOOGLE_CLIENT_ID, CORS_ORIGINS } from './config';
 import {
   parseIntent, detectMyRecordsIntent, detectExplorationIntent, detectAppointmentsQuery,
   detectWeatherIntent,
@@ -31,16 +31,36 @@ import {
   flightsSurface, hotelsSurface, roomsSurface, tripSummarySurface, myRecordsSurface, recordDetailSurface,
   destinationsSurface, doctorsSurface, doctorProfileSurface, doctorBookingFormSurface, appointmentConfirmationSurface,
   appointmentsSurface, budgetBreakdownSurface, expenseLoggedSurface, savingsGoalSurface, savingsGoalsListSurface,
-  financeSummarySurface, portfolioSurface, goalsAnalysisSurface,
+  financeSummarySurface, portfolioSurface, goalsAnalysisSurface, weatherSurface,
   expensesBreakdownSurface, cashFlowSurface, budgetUtilizationSurface, recentExpensesSurface,
   inr, formatAppointmentDate, hotelImage, roomImage, destinationImage, flightImage, flightDetails, hotelDetails, cabinPriceMultiplier,
 } from './orchestrator/envelopes';
+import { buildSurface } from './orchestrator/uiAgent';
 import {
   db, type UserRow, type PlanRow, type AppointmentRow,
   type FinanceProfileRow, type SavingsGoalRow,
 } from './db';
 import { newId, hashPassword, verifyPassword, signToken, toAuthUser, requireAuth, optionalAuth, type AuthUser } from './auth/auth';
 import { loadWeather } from './weather/weather';
+
+/** Shared goal text for surfaces triggered from more than one place in this
+ * file — same screen regardless of what led to it, so one goal string. */
+const GOALS = {
+  flights: 'The traveller searched for flights. Show them the options so they can compare and pick one. Available action: selectFlight, context { flightId }.',
+  hotels: 'The traveller searched for hotels in a city. Show them the options so they can compare and pick one to see its rooms. Available action: viewRooms, context { hotelId }.',
+  rooms: 'The traveller picked a hotel; show its room types so they can pick one and see dates/guests. Available action: selectRoom, context { roomId }; also a back-to-hotels action may be offered.',
+  trip: 'Show the traveller\'s trip summary so far: destination, dates, flight, hotel, room, and running total. If everything needed is chosen, offer to book. Available action: bookTrip, context { guestName }.',
+  weather: 'Show the current weather for a place: temperature, feels-like, condition (with its icon), humidity, wind, plus a short multi-day forecast strip (day label, icon, high/low). Mention it is a live third-party reading, not a saved trip record. Read-only, no actions.',
+};
+
+/** buildSurface(...).then((envs) => emitAll(sessionId, envs)) fire-and-forget,
+ * collapsed into one call — every call site below wants exactly this, and
+ * repeating the .then each time was the single most duplicated line in this
+ * file. Not used by emitFinance's branches: those share one `built?.then(...)`
+ * across the whole if/else chain instead of firing per-branch. */
+function emitSurface(sessionId: string, key: string, goal: string, dataSource: () => Envelope[]): void {
+  buildSurface(key, goal, dataSource).then((envs) => emitAll(sessionId, envs));
+}
 
 const app = Fastify({ logger: false });
 
@@ -118,13 +138,13 @@ app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth },
   // Checked before parseIntent (same reasoning as the detectors above): a
   // bare weather question names no origin/destination the trip prompt
   // understands, so without this it falls through to "which city did you
-  // mean?". No agents and no pending work — the client's WeatherCard fetches
-  // /api/weather?place=... on its own, exactly as the trip-planning weather
-  // cross-sell already does.
+  // mean?". No agents — rendering is deferred to pendingWeather/runWeather,
+  // same as every other agent-backed response (see pendingExploration).
   const weatherQuery = detectWeatherIntent(query);
   if (weatherQuery) {
     const session = createSession();
     session.trip.destination = weatherQuery.place;
+    session.pendingWeather = { place: weatherQuery.place };
     return {
       sessionId: session.id,
       intent: {
@@ -299,6 +319,8 @@ app.get<{ Params: { sessionId: string } }>('/api/events/:sessionId', async (req,
       emitFinance(sessionId, session.pendingFinance);
     } else if (session.pendingExploration) {
       runExploration(sessionId, session.pendingExploration);
+    } else if (session.pendingWeather) {
+      runWeather(sessionId, session.pendingWeather);
     } else if (session.pendingDoctorLookup) {
       runDoctorLookup(sessionId, session.pendingDoctorLookup, session.pendingDoctorView, session.pendingDoctorHints);
     } else {
@@ -325,9 +347,13 @@ function emitMyRecords(sessionId: string, pending: PendingMyRecords) {
       : pending.bookingType === 'flights' ? ' — Flights Only'
       : pending.bookingType === 'rooms' ? ' — Rooms Only'
       : '';
-    emitAll(sessionId, myRecordsSurface('records', `${base}${suffix}`, pending.records));
+    emitSurface(sessionId, 'myRecords',
+      `Show the traveller's saved plans/bookings under the heading "${base}${suffix}". Read-only list, tapping a row should feel natural but there is no bound action for it yet.`,
+      () => myRecordsSurface('records', `${base}${suffix}`, pending.records));
   } else if (pending.kind === 'detail') {
-    emitAll(sessionId, recordDetailSurface('recordDetail', pending.record, pending.trip));
+    emitSurface(sessionId, 'recordDetail',
+      'Show the full detail of one saved trip plan/booking the traveller picked from their list: destination, dates, flight, hotel, room, price. Read-only.',
+      () => recordDetailSurface('recordDetail', pending.record, pending.trip));
   }
   // 'signin' and 'not-found' carry everything needed in the intent summary
   // alone — nothing further to render.
@@ -345,7 +371,9 @@ function emitAppointments(sessionId: string, pending: PendingAppointments) {
     : pending.filter === 'upcoming' ? 'Upcoming Appointments'
     : pending.filter === 'past' ? 'Past Appointments'
     : 'My Appointments';
-  emitAll(sessionId, appointmentsSurface('appointments', base, pending.appointments));
+  emitSurface(sessionId, 'appointments',
+    `Show the patient's appointments under the heading "${base}": doctor, specialty, hospital, date, time, reference. Read-only list.`,
+    () => appointmentsSurface('appointments', base, pending.appointments));
 }
 
 /** Renders whatever a chat-typed finance message resolved to — same
@@ -354,33 +382,79 @@ function emitAppointments(sessionId: string, pending: PendingAppointments) {
  * intent summary alone; an empty goals list is skipped the same way an
  * empty appointments list is, for the same "decent, not broken" reason. */
 function emitFinance(sessionId: string, pending: PendingFinance) {
+  let built: Promise<Envelope[]> | undefined;
   if (pending.kind === 'budget') {
-    emitAll(sessionId, budgetBreakdownSurface('finance', pending.income, pending.categories, pending.allocatedTotal));
+    built = buildSurface(
+      'financeBudget',
+      'Show the traveller\'s monthly budget: income, spend per category vs. its limit, and the total allocated. Read-only.',
+      () => budgetBreakdownSurface('finance', pending.income, pending.categories, pending.allocatedTotal),
+    );
   } else if (pending.kind === 'expense_logged') {
-    emitAll(sessionId, expenseLoggedSurface('finance', pending.amount, pending.category, pending.note, pending.categoryStatus));
+    built = buildSurface(
+      'financeExpenseLogged',
+      'Confirm one expense was just logged: amount, category, optional note, and that category\'s updated spend-vs-limit status.',
+      () => expenseLoggedSurface('finance', pending.amount, pending.category, pending.note, pending.categoryStatus),
+    );
   } else if (pending.kind === 'goal') {
-    emitAll(sessionId, savingsGoalSurface('finance', pending.goal));
+    built = buildSurface(
+      'financeGoal',
+      'Show progress on one savings goal: name, saved amount vs. target, target date.',
+      () => savingsGoalSurface('finance', pending.goal),
+    );
   } else if (pending.kind === 'goals_list' && pending.goals.length > 0) {
-    emitAll(sessionId, savingsGoalsListSurface('finance', pending.goals));
+    built = buildSurface(
+      'financeGoalsList',
+      'Show progress on every one of the traveller\'s savings goals: name, saved vs. target, target date, for each.',
+      () => savingsGoalsListSurface('finance', pending.goals),
+    );
   } else if (pending.kind === 'summary' && pending.categories.length > 0) {
-    emitAll(sessionId, financeSummarySurface('finance', pending.periodLabel, pending.categories, pending.totalSpent, pending.compare));
+    built = buildSurface(
+      'financeSummary',
+      `Show a spend summary for "${pending.periodLabel}": total spent, spend per category with its share of the total, optionally compared to the prior period.`,
+      () => financeSummarySurface('finance', pending.periodLabel, pending.categories, pending.totalSpent, pending.compare),
+    );
   } else if (pending.kind === 'portfolio') {
-    emitAll(sessionId, portfolioSurface('finance', pending));
+    built = buildSurface(
+      'financePortfolio',
+      'Show the traveller\'s full finance dashboard: income/expense/savings-rate stats, a cash-flow trend over the last 6 months, an expense breakdown by category, recent expense entries, and savings goal progress. This is the richest finance screen — use charts where the data is a trend or a breakdown, not just text.',
+      () => portfolioSurface('finance', pending),
+    );
   } else if (pending.kind === 'goals_analysis') {
-    emitAll(sessionId, goalsAnalysisSurface(
-      'finance', pending.income, pending.expenseTotal, pending.expenseSource, pending.disposable,
-      pending.goals, pending.totalRequired, pending.feasible, pending.shortfall, pending.surplus,
-      pending.cuts, pending.extensions, pending.singleGoalName, pending.notFoundName,
-    ));
+    built = buildSurface(
+      'financeGoalsAnalysis',
+      'Show whether the traveller\'s savings goals are feasible given their income and expenses: disposable income, total required, feasible or not, any shortfall/surplus, and suggested cuts or extensions if not feasible.',
+      () => goalsAnalysisSurface(
+        'finance', pending.income, pending.expenseTotal, pending.expenseSource, pending.disposable,
+        pending.goals, pending.totalRequired, pending.feasible, pending.shortfall, pending.surplus,
+        pending.cuts, pending.extensions, pending.singleGoalName, pending.notFoundName,
+      ),
+    );
   } else if (pending.kind === 'expenses_breakdown') {
-    emitAll(sessionId, expensesBreakdownSurface('finance', pending.categories, pending.expenseSource));
+    built = buildSurface(
+      'financeExpensesBreakdown',
+      'Show how the traveller\'s expenses split across categories — a breakdown, best shown as a chart plus the numbers.',
+      () => expensesBreakdownSurface('finance', pending.categories, pending.expenseSource),
+    );
   } else if (pending.kind === 'cash_flow' && pending.cashFlow.some((c) => c.income > 0 || c.expenses > 0)) {
-    emitAll(sessionId, cashFlowSurface('finance', pending.cashFlow));
+    built = buildSurface(
+      'financeCashFlow',
+      'Show income vs. expenses over the last several months — a trend, best shown as a chart.',
+      () => cashFlowSurface('finance', pending.cashFlow),
+    );
   } else if (pending.kind === 'budget_utilization' && pending.limit > 0) {
-    emitAll(sessionId, budgetUtilizationSurface('finance', pending.pct, pending.spent, pending.limit));
+    built = buildSurface(
+      'financeBudgetUtilization',
+      'Show how much of the traveller\'s budget limit has been spent so far — a single percentage-of-limit reading.',
+      () => budgetUtilizationSurface('finance', pending.pct, pending.spent, pending.limit),
+    );
   } else if (pending.kind === 'recent_expenses' && pending.expenses.length > 0) {
-    emitAll(sessionId, recentExpensesSurface('finance', pending.expenses));
+    built = buildSurface(
+      'financeRecentExpenses',
+      'Show the traveller\'s most recent logged expenses: category, amount, note, date, most recent first.',
+      () => recentExpensesSurface('finance', pending.expenses),
+    );
   }
+  built?.then((envs) => emitAll(sessionId, envs));
 }
 
 /** Generates and renders the destination suggestions for a chat-asked
@@ -390,8 +464,25 @@ function runExploration(sessionId: string, pending: NonNullable<ReturnType<typeo
   if (!pending) return;
   getDestinationSuggestions(pending.region, pending.season).then(({ destinations, source }) => {
     if (!getSession(sessionId)) return;
-    emitAll(sessionId, destinationsSurface('destinations', pending.region, pending.season, pending.durationNights, destinations));
+    buildSurface(
+      'destinations',
+      `Show destination suggestions for a trip to ${pending.region}${pending.season ? ` in ${pending.season}` : ''}: name, why it fits, a photo if available. Available action: exploreDestination, context { name }; also scheduleTrip, context { region, durationNights } to start planning.`,
+      () => destinationsSurface('destinations', pending.region, pending.season, pending.durationNights, destinations),
+    ).then((envs) => emitAll(sessionId, envs));
   });
+}
+
+/** Renders live weather for a chat-asked "what's the weather in X" query, or
+ * as a cross-sell alongside a flights/hotels search (see runAgents) — same
+ * one surface either way. A fetch failure (unknown place, provider down)
+ * renders nothing, same "skip rather than show broken" reasoning as
+ * emitMyRecords/emitAppointments on an empty result. */
+function runWeather(sessionId: string, pending: { place: string } | undefined) {
+  if (!pending) return;
+  loadWeather(pending.place).then((reading) => {
+    if (!reading || !getSession(sessionId)) return;
+    emitSurface(sessionId, 'weather', GOALS.weather, () => weatherSurface('weather', reading));
+  }).catch(() => {});
 }
 
 /** Renders the profile+booking card for a "View profile for Dr. X"/"Book an
@@ -407,9 +498,13 @@ function runDoctorLookup(
   session.doctorsCache = new Map([[doctor.id, doctor]]);
   session.activeDoctorId = doctor.id;
   if (view === 'book') {
-    emitAll(sessionId, doctorBookingFormSurface('health', doctor, session.symptom, hints));
+    emitSurface(sessionId, 'doctorBookingForm',
+      'The patient picked a doctor and now has to book an appointment. Collect the patient details the booking needs and let them confirm. The confirm button must not work until name, phone, date and time are filled in. Available action: confirmAppointment, context { doctorId, patientName, patientAge, patientGender, patientPhone, patientEmail, reason, preferredDate, preferredTime }.',
+      () => doctorBookingFormSurface('health', doctor, session.symptom, hints));
   } else {
-    emitAll(sessionId, doctorProfileSurface('health', doctor));
+    emitSurface(sessionId, 'doctorProfile',
+      'Show one doctor\'s profile: name, specialty, qualifications, expertise areas, languages, hospital, rating, consultation fee. Available action: startDoctorBooking, context { name }.',
+      () => doctorProfileSurface('health', doctor));
   }
 }
 
@@ -1246,6 +1341,14 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
   const session = getSession(sessionId);
   if (!session) return;
 
+  // Weather cross-sell: a live reading tied to an actual trip, so only once
+  // flights/hotels are genuinely being searched for a real destination —
+  // never for a bare inspiration query. Same runWeather/weatherSurface as a
+  // standalone "what's the weather in X" lookup.
+  if ((intent.agents.includes('flights') || intent.agents.includes('hotels')) && intent.destination) {
+    runWeather(sessionId, { place: intent.destination });
+  }
+
   // A "give me the details of X hotel" / "View rooms at X" query that matched
   // an already-known hotel — go straight to its rooms instead of running a
   // fresh search. No "← Back to hotels" button: this is its own chat turn,
@@ -1254,7 +1357,7 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
   if (session.directHotel) {
     session.activeHotelId = session.directHotel.id;
     session.hotelsCache = new Map([[session.directHotel.id, session.directHotel]]);
-    emitAll(sessionId, roomsSurface('hotels', session.directHotel, undefined, undefined, false));
+    emitSurface(sessionId, 'rooms', GOALS.rooms, () => roomsSurface('hotels', session.directHotel!, undefined, undefined, false));
     return;
   }
 
@@ -1281,7 +1384,7 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
         ? flights.map((f) => (f.id === recommended.id ? { ...f, recommended: true } : f))
         : flights;
       s.flightsCache = new Map(stamped.map((f) => [f.id, f]));
-      emitAll(sessionId, flightsSurface('flights', stamped));
+      emitSurface(sessionId, 'flights', GOALS.flights, () => flightsSurface('flights', stamped));
     });
   }
 
@@ -1310,23 +1413,26 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
             ? { checkIn, checkOut, adults: s.trip.adults || 2, children: s.trip.children || 0 }
             : undefined;
           const room = pickRecommendedRoom(hotel.rooms);
-          emitAll(sessionId, roomsSurface('hotels', hotel, booking, room?.id));
+          emitSurface(sessionId, 'rooms', GOALS.rooms, () => roomsSurface('hotels', hotel, booking, room?.id));
           return;
         }
       }
 
-      emitAll(sessionId, hotelsSurface('hotels', hotels));
+      emitSurface(sessionId, 'hotels', GOALS.hotels, () => hotelsSurface('hotels', hotels));
     });
   }
 
-  // find_doctor: pure matching against the curated dataset, no LLM call and
-  // no async wait — emitted synchronously, unlike flights/hotels/destinations
-  // above, since there's no live generation step to wait on.
+  // find_doctor: pure matching against the curated dataset, no LLM call for
+  // the *data*, unlike flights/hotels/destinations above — the layout is
+  // still generated, so this stays async.
   if (intent.agents.includes('health')) {
     const matches = getDoctorMatches(intent.specialty, intent.ageGroup);
     session.doctorsCache = new Map(matches.map((d) => [d.id, d]));
     session.symptom = intent.symptom;
-    emitAll(sessionId, doctorsSurface('health', normalizeSpecialty(intent.specialty), matches));
+    const specialty = normalizeSpecialty(intent.specialty);
+    emitSurface(sessionId, 'doctors',
+      `Show doctor matches for specialty "${specialty}": name, qualifications, expertise, languages, hospital, rating, consultation fee, photo. Available actions: viewDoctorProfile, context { name }; startDoctorBooking, context { name }.`,
+      () => doctorsSurface('health', specialty, matches));
   }
 }
 
@@ -1361,7 +1467,7 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
         }
       }
       recomputeTotal(session);
-      emitAll(sessionId, tripSummarySurface('trip', session.trip));
+      emitSurface(sessionId, 'trip', GOALS.trip, () => tripSummarySurface('trip', session.trip));
 
       // Reduce clicks: once a flight is confirmed, if this trip also expects
       // a hotel and no room is picked (or already auto-picked up front in
@@ -1385,7 +1491,7 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
           const checkIn = flight.date;
           const checkOut = addDays(checkIn, nights);
           const room = pickRecommendedRoom(hotel.rooms);
-          emitAll(sessionId, roomsSurface('hotels', hotel, {
+          emitSurface(sessionId, 'rooms', GOALS.rooms, () => roomsSurface('hotels', hotel, {
             checkIn, checkOut, adults: session.trip.adults || 2, children: session.trip.children || 0,
           }, room?.id));
         }
@@ -1403,13 +1509,13 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
       const booking = checkIn && checkOut
         ? { checkIn, checkOut, adults: session.trip.adults || 2, children: session.trip.children || 0 }
         : undefined;
-      emitAll(sessionId, roomsSurface('hotels', hotel, booking));
+      emitSurface(sessionId, 'rooms', GOALS.rooms, () => roomsSurface('hotels', hotel, booking));
     }
   }
 
   if (name === 'backToHotels') {
     session.activeHotelId = undefined;
-    emitAll(sessionId, hotelsSurface('hotels', [...session.hotelsCache.values()] as HotelOption[]));
+    emitSurface(sessionId, 'hotels', GOALS.hotels, () => hotelsSurface('hotels', [...session.hotelsCache.values()] as HotelOption[]));
   }
 
   if (name === 'selectRoom') {
@@ -1423,7 +1529,7 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
       if (context.adults) session.trip.adults = Number(context.adults);
       session.trip.children = context.children ? Number(context.children) : 0;
       recomputeTotal(session);
-      emitAll(sessionId, tripSummarySurface('trip', session.trip));
+      emitSurface(sessionId, 'trip', GOALS.trip, () => tripSummarySurface('trip', session.trip));
     }
   }
 
@@ -1471,7 +1577,7 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
     // A confirmed booking is persisted immediately for a signed-in user, so
     // it shows under "my bookings" without a separate "Save to My Plans" tap.
     upsertTripPlan(session, req.user?.id);
-    emitAll(sessionId, tripSummarySurface('trip', session.trip));
+    emitSurface(sessionId, 'trip', GOALS.trip, () => tripSummarySurface('trip', session.trip));
   }
 
   // A room or a flight can each be confirmed on its own — a traveler who
@@ -1486,7 +1592,7 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
       if (needsGuestName) session.trip.guestName = guestName;
       session.trip.bookingRef = `VOY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
       upsertTripPlan(session, req.user?.id);
-      emitAll(sessionId, tripSummarySurface('trip', session.trip));
+      emitSurface(sessionId, 'trip', GOALS.trip, () => tripSummarySurface('trip', session.trip));
     }
   }
 
@@ -1516,9 +1622,9 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
         patientPhone, String(context.patientEmail || '') || null, String(context.reason || '') || null,
         preferredDate, preferredTime, appointmentRef, new Date().toISOString()
       );
-      emitAll(sessionId, appointmentConfirmationSurface(
-        'health', doctor, doctor.hospital, patientName, preferredDate, preferredTime, appointmentRef
-      ));
+      emitSurface(sessionId, 'appointmentConfirmation',
+        'Confirm the appointment was booked: doctor, hospital, patient name, date, time, and the appointment reference number.',
+        () => appointmentConfirmationSurface('health', doctor, doctor.hospital, patientName, preferredDate, preferredTime, appointmentRef));
     }
   }
 
@@ -1543,7 +1649,7 @@ app.post<{ Body: { sessionId: string; agent: 'flights' | 'hotels'; origin?: stri
       const s = getSession(sessionId);
       if (!s) return;
       s.flightsCache = new Map(flights.map((f) => [f.id, f]));
-      emitAll(sessionId, flightsSurface('flights', flights));
+      emitSurface(sessionId, 'flights', GOALS.flights, () => flightsSurface('flights', flights));
     });
   } else {
     const destination = session.trip.destination;
@@ -1552,7 +1658,7 @@ app.post<{ Body: { sessionId: string; agent: 'flights' | 'hotels'; origin?: stri
       if (!s) return;
       s.hotelsCache = new Map(hotels.map((h) => [h.id, h]));
       indexHotels(hotels, destination);
-      emitAll(sessionId, hotelsSurface('hotels', hotels));
+      emitSurface(sessionId, 'hotels', GOALS.hotels, () => hotelsSurface('hotels', hotels));
     });
   }
 

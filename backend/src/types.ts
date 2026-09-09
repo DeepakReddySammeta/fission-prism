@@ -26,9 +26,10 @@ export interface ComponentDef {
 }
 
 export type CatalogComponent =
-  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge' | 'Bar' | 'Pie' | 'BarChart' | 'AreaChart' | 'RadarChart' | 'Gauge'
+  | 'Text' | 'Image' | 'Icon' | 'Divider' | 'Badge' | 'Metric'
+  | 'Bar' | 'Pie' | 'BarChart' | 'AreaChart' | 'LineChart' | 'RadarChart' | 'Gauge' | 'Table'
   | 'Row' | 'Column' | 'List' | 'Card' | 'Tabs' | 'Disclosure'
-  | 'Button' | 'TextField' | 'CheckBox' | 'Slider' | 'ChoicePicker';
+  | 'Button' | 'TextField' | 'Stepper' | 'CheckBox' | 'Slider' | 'ChoicePicker';
 
 export interface CreateSurfaceMsg {
   surfaceId: string;
@@ -69,9 +70,10 @@ export interface ActionPayload {
 
 /** The allowlist. Backend validates against this; frontend enforces it again. */
 export const CATALOG_COMPONENTS: CatalogComponent[] = [
-  'Text', 'Image', 'Icon', 'Divider', 'Badge', 'Bar', 'Pie', 'BarChart', 'AreaChart', 'RadarChart', 'Gauge',
+  'Text', 'Image', 'Icon', 'Divider', 'Badge', 'Metric',
+  'Bar', 'Pie', 'BarChart', 'AreaChart', 'LineChart', 'RadarChart', 'Gauge', 'Table',
   'Row', 'Column', 'List', 'Card', 'Tabs', 'Disclosure',
-  'Button', 'TextField', 'CheckBox', 'Slider', 'ChoicePicker',
+  'Button', 'TextField', 'Stepper', 'CheckBox', 'Slider', 'ChoicePicker',
 ];
 
 export const CATALOG_FUNCTIONS = [

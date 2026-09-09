@@ -1,0 +1,162 @@
+[
+  {
+    "id": "root",
+    "component": "Card",
+    "title": "Book Appointment",
+    "description": {
+      "path": "/doctor/summaryLine"
+    },
+    "child": "mainColumn"
+  },
+  {
+    "id": "mainColumn",
+    "component": "Column",
+    "gap": 12,
+    "children": [
+      "heading",
+      "nameField",
+      "ageField",
+      "genderPicker",
+      "phoneField",
+      "emailField",
+      "reasonField",
+      "dateField",
+      "timeField",
+      "confirmButton"
+    ]
+  },
+  {
+    "id": "heading",
+    "component": "Text",
+    "text": "Book Appointment",
+    "variant": "h2"
+  },
+  {
+    "id": "nameField",
+    "component": "TextField",
+    "label": "Name",
+    "path": "/booking/patientName",
+    "inputType": "text"
+  },
+  {
+    "id": "ageField",
+    "component": "TextField",
+    "label": "Age",
+    "path": "/booking/patientAge",
+    "inputType": "number"
+  },
+  {
+    "id": "genderPicker",
+    "component": "ChoicePicker",
+    "label": "Gender",
+    "path": "/booking/patientGender",
+    "options": [
+      "Male",
+      "Female",
+      "Other"
+    ]
+  },
+  {
+    "id": "phoneField",
+    "component": "TextField",
+    "label": "Phone",
+    "path": "/booking/patientPhone",
+    "inputType": "tel"
+  },
+  {
+    "id": "emailField",
+    "component": "TextField",
+    "label": "Email",
+    "path": "/booking/patientEmail",
+    "inputType": "email"
+  },
+  {
+    "id": "reasonField",
+    "component": "TextField",
+    "label": "Reason for visit",
+    "path": "/booking/reason",
+    "inputType": "text"
+  },
+  {
+    "id": "dateField",
+    "component": "TextField",
+    "label": "Preferred Date",
+    "path": "/booking/preferredDate",
+    "inputType": "date",
+    "min": {
+      "path": "/booking/dateMin"
+    }
+  },
+  {
+    "id": "timeField",
+    "component": "TextField",
+    "label": "Preferred Time",
+    "path": "/booking/preferredTime",
+    "inputType": "text",
+    "placeholder": "HH:MM"
+  },
+  {
+    "id": "confirmButton",
+    "component": "Button",
+    "child": "confirmBtnText",
+    "variant": "primary",
+    "action": {
+      "event": {
+        "name": "confirmAppointment",
+        "context": {
+          "doctorId": {
+            "path": "/doctor/id"
+          },
+          "patientName": {
+            "path": "/booking/patientName"
+          },
+          "patientAge": {
+            "path": "/booking/patientAge"
+          },
+          "patientGender": {
+            "path": "/booking/patientGender"
+          },
+          "patientPhone": {
+            "path": "/booking/patientPhone"
+          },
+          "patientEmail": {
+            "path": "/booking/patientEmail"
+          },
+          "reason": {
+            "path": "/booking/reason"
+          },
+          "preferredDate": {
+            "path": "/booking/preferredDate"
+          },
+          "preferredTime": {
+            "path": "/booking/preferredTime"
+          }
+        }
+      }
+    },
+    "checks": [
+      {
+        "path": "/booking/patientName",
+        "required": true
+      },
+      {
+        "path": "/booking/patientPhone",
+        "required": true
+      },
+      {
+        "path": "/booking/preferredDate",
+        "required": true
+      },
+      {
+        "path": "/booking/preferredTime",
+        "required": true
+      }
+    ]
+  },
+  {
+    "id": "confirmBtnText",
+    "component": "Text",
+    "text": "Confirm Appointment",
+    "variant": "body"
+  }
+]

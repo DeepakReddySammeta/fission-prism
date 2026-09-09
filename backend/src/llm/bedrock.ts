@@ -1,5 +1,5 @@
 import AnthropicBedrock from '@anthropic-ai/bedrock-sdk';
-import { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_REGION } from '../config';
+import { AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN, AWS_REGION, LLM_MAX_TOKENS } from '../config';
 import type { CompleteFn } from './types';
 
 /** Strips a ```json … ``` (or bare ``` … ```) fence if the model wrapped its
@@ -12,7 +12,7 @@ function unfence(text: string): string {
 
 /**
  * AWS Bedrock backend, talking to a Claude model via the Anthropic Messages
- * API shape (`converse`-equivalent). Selected when LLM_PROVIDER=bedrock.
+ * API shape (`converse`-equivalent). The app's only LLM backend.
  *
  * Thinking is disabled so responses come back at chat speed — the agents only
  * ever want a compact JSON object, and a live demo can't wait on reasoning.
@@ -43,7 +43,7 @@ export function createBedrockBackend(model: string): CompleteFn {
     const message = await client.messages.create(
       {
         model,
-        max_tokens: 8192,
+        max_tokens: LLM_MAX_TOKENS,
         thinking: { type: 'disabled' },
         system: `${instructions}\nRespond with ONLY a single JSON object, no prose, no markdown fences.`,
         messages: [{ role: 'user', content: userContent }],

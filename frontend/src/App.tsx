@@ -7,7 +7,6 @@ import { useAuth } from './auth/AuthContext';
 import { AuthDialog } from './auth/AuthDialog';
 import { usePlanner, type Turn } from './planner/PlannerContext';
 import { TripBuilderCard } from './components/TripBuilderCard';
-import { WeatherCard } from './components/WeatherCard';
 import { Stepper } from './components/Stepper';
 import { NEW_CHAT_EVENT } from './shell/plannerBus';
 import { PrismMark } from './shell/PrismMark';
@@ -400,6 +399,11 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // profile, and the appointment form/confirmation all share this one
   // surfaceId, the same way hotels list vs. rooms detail do.
   const healthSurface = runtime.getSurface('health');
+  // Live weather — its own surface, generated from the catalog like every
+  // other agent response (see weatherSurface in envelopes.ts), fired either
+  // standalone ("what's the weather in X") or as a cross-sell alongside a
+  // flights/hotels search.
+  const weatherSurface = runtime.getSurface('weather');
 
   const expectedAgents = intent?.agents || [];
   const flightsPending = expectedAgents.includes('flights') && !(flightsSurface && componentCount(flightsSurface) > 0);
@@ -412,15 +416,6 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   const bothExpected = expectedAgents.includes('flights') && expectedAgents.includes('hotels');
   const flightsRendered = !!flightsSurface && componentCount(flightsSurface) > 0;
   const holdHotelsForFlights = bothExpected && !flightsRendered;
-  // Weather is a live, real-world reading tied to an actual trip — it should
-  // never appear for a bare inspiration query ("best places to visit...")
-  // or any other non-booking intent, only once flights/hotels are genuinely
-  // being searched for a real destination.
-  const wantsBookingWeather = expectedAgents.includes('flights') || expectedAgents.includes('hotels');
-  // A standalone "what's the weather in X" query (see detectWeatherIntent on
-  // the backend) — the same card, just on its own rather than as a side dish
-  // to a flights/hotels search, and with its own heading/empty state.
-  const isWeatherLookup = intent?.intent === 'check_weather';
 
   const selectedFlight = useMemo(() => {
     if (!selectedFlightId || !flightsSurface) return null;
@@ -473,8 +468,10 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
 
       <main className={`results${canDownload && !wantsCombo ? ' has-rail' : ''}`}>
         <div className="results-main">
-          {intent?.destination && (wantsBookingWeather || isWeatherLookup) && (
-            <WeatherCard destination={intent.destination} standalone={isWeatherLookup} />
+          {componentCount(weatherSurface) > 0 && (
+            <div className="reveal">
+              <Surface surface={weatherSurface} className="surface-weather" />
+            </div>
           )}
 
           {componentCount(destinationsSurface) > 0 && (

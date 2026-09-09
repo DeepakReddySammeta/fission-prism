@@ -1,0 +1,155 @@
+[
+  {
+    "version": "v0.9.1",
+    "createSurface": {
+      "surfaceId": "trip",
+      "catalogId": "https://voyage.ai/catalogs/travel/v1",
+      "theme": {
+        "primaryColor": "#1c1e2e",
+        "agentDisplayName": "Trip Summary"
+      },
+      "sendDataModel": false
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateComponents": {
+      "surfaceId": "trip",
+      "components": [
+        {
+          "id": "root",
+          "component": "Card",
+          "child": "body"
+        },
+        {
+          "id": "body",
+          "component": "Column",
+          "gap": 10,
+          "children": [
+            "head",
+            "flight_line",
+            "hotel_line",
+            "room_line",
+            "divider_1",
+            "subtotal_line",
+            "taxes_line",
+            "total_line",
+            "guest_line",
+            "ref_line"
+          ]
+        },
+        {
+          "id": "head",
+          "component": "Text",
+          "variant": "h2",
+          "text": "Your trip"
+        },
+        {
+          "id": "flight_line",
+          "component": "Text",
+          "variant": "body",
+          "text": "✈ Air India AI-101 · 20:00→00:30 · ₹3486"
+        },
+        {
+          "id": "hotel_line",
+          "component": "Text",
+          "variant": "body",
+          "text": "🏨 The Whispering Pines · Lake View"
+        },
+        {
+          "id": "room_line",
+          "component": "Text",
+          "variant": "body",
+          "text": "🛏 Twin Room · ₹2922/night · 2026-09-10 → 2026-09-13 · 2 adults"
+        },
+        {
+          "id": "divider_1",
+          "component": "Divider"
+        },
+        {
+          "id": "subtotal_line",
+          "component": "Row",
+          "justify": "between",
+          "children": [
+            "subtotal_label",
+            "subtotal_value"
+          ]
+        },
+        {
+          "id": "subtotal_label",
+          "component": "Text",
+          "variant": "caption",
+          "text": "Subtotal"
+        },
+        {
+          "id": "subtotal_value",
+          "component": "Text",
+          "variant": "caption",
+          "text": "₹22660"
+        },
+        {
+          "id": "taxes_line",
+          "component": "Row",
+          "justify": "between",
+          "children": [
+            "taxes_label",
+            "taxes_value"
+          ]
+        },
+        {
+          "id": "taxes_label",
+          "component": "Text",
+          "variant": "caption",
+          "text": "Taxes & fees"
+        },
+        {
+          "id": "taxes_value",
+          "component": "Text",
+          "variant": "caption",
+          "text": "₹1840"
+        },
+        {
+          "id": "total_line",
+          "component": "Row",
+          "justify": "between",
+          "children": [
+            "total_label",
+            "total_value"
+          ]
+        },
+        {
+          "id": "total_label",
+          "component": "Text",
+          "variant": "h3",
+          "text": "Total"
+        },
+        {
+          "id": "total_value",
+          "component": "Text",
+          "variant": "h3",
+          "text": "₹24500"
+        },
+        {
+          "id": "guest_line",
+          "component": "Text",
+          "variant": "caption",
+          "text": "Guest: Asha Rao"
+        },
+        {
+          "id": "ref_line",
+          "component": "Badge",
+          "tone": "success",
+          "text": "Booked · PRZ-4821"
+        }
+      ]
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateDataModel": {
+      "surfaceId": "trip",
+      "path": "/guestName",
+      "value": "Asha Rao"
+    }
+  }
+]

@@ -1,0 +1,162 @@
+[
+  {
+    "version": "v0.9.1",
+    "createSurface": {
+      "surfaceId": "appointments",
+      "catalogId": "https://voyage.ai/catalogs/travel/v1",
+      "theme": {
+        "primaryColor": "#f25011",
+        "agentDisplayName": "My Appointments"
+      },
+      "sendDataModel": false
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateComponents": {
+      "surfaceId": "appointments",
+      "components": [
+        {
+          "id": "root",
+          "component": "Card",
+          "child": "body"
+        },
+        {
+          "id": "body",
+          "component": "Column",
+          "children": [
+            "head",
+            "list"
+          ]
+        },
+        {
+          "id": "head",
+          "component": "Text",
+          "variant": "h2",
+          "text": "Your upcoming appointments"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "children": {
+            "path": "/appointments",
+            "componentId": "appt_row"
+          }
+        },
+        {
+          "id": "appt_row",
+          "component": "Row",
+          "gap": 16,
+          "justify": "between",
+          "wrap": true,
+          "children": [
+            "appt_left",
+            "appt_right"
+          ]
+        },
+        {
+          "id": "appt_left",
+          "component": "Column",
+          "gap": 4,
+          "children": [
+            "appt_top",
+            "appt_hospital",
+            "appt_patient"
+          ]
+        },
+        {
+          "id": "appt_top",
+          "component": "Row",
+          "gap": 8,
+          "align": "center",
+          "wrap": true,
+          "children": [
+            "appt_doctor",
+            "appt_specialty"
+          ]
+        },
+        {
+          "id": "appt_doctor",
+          "component": "Text",
+          "variant": "h3",
+          "text": {
+            "path": "doctorName"
+          }
+        },
+        {
+          "id": "appt_specialty",
+          "component": "Badge",
+          "tone": "brand",
+          "text": {
+            "path": "specialty"
+          }
+        },
+        {
+          "id": "appt_hospital",
+          "component": "Text",
+          "variant": "caption",
+          "text": {
+            "path": "hospitalName"
+          }
+        },
+        {
+          "id": "appt_patient",
+          "component": "Text",
+          "variant": "caption",
+          "text": {
+            "path": "patientLabel"
+          }
+        },
+        {
+          "id": "appt_right",
+          "component": "Column",
+          "gap": 4,
+          "align": "end",
+          "children": [
+            "appt_date",
+            "appt_ref"
+          ]
+        },
+        {
+          "id": "appt_date",
+          "component": "Text",
+          "variant": "body",
+          "text": {
+            "path": "dateLabel"
+          }
+        },
+        {
+          "id": "appt_ref",
+          "component": "Badge",
+          "tone": "success",
+          "text": {
+            "path": "refLabel"
+          }
+        }
+      ]
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateDataModel": {
+      "surfaceId": "appointments",
+      "path": "/appointments",
+      "value": [
+        {
+          "id": "a1",
+          "doctorName": "Dr. Ananya Reddy",
+          "specialty": "Cardiology",
+          "hospitalName": "Continental Hospitals",
+          "patientName": "Asha Rao",
+          "preferredDate": "2026-09-18",
+          "preferredTime": "11:30 AM",
+          "appointmentRef": "APT-2261",
+          "createdAt": "2026-09-01T08:00:00Z",
+          "patientLabel": "Patient: Asha Rao",
+          "dateLabel": "Fri 18 September · 11:30 AM",
+          "refLabel": "Booked · APT-2261"
+        }
+      ]
+    }
+  }
+]

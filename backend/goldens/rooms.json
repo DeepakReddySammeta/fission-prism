@@ -1,0 +1,614 @@
+[
+  {
+    "version": "v0.9.1",
+    "createSurface": {
+      "surfaceId": "hotels",
+      "catalogId": "https://voyage.ai/catalogs/travel/v1",
+      "theme": {
+        "primaryColor": "#f25011",
+        "agentDisplayName": "Stay Finder"
+      },
+      "sendDataModel": false
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateComponents": {
+      "surfaceId": "hotels",
+      "components": [
+        {
+          "id": "root",
+          "component": "Card",
+          "child": "body"
+        },
+        {
+          "id": "body",
+          "component": "Column",
+          "gap": 14,
+          "children": [
+            "back_row",
+            "hero_img",
+            "gallery_row",
+            "head",
+            "rating_row",
+            "rating_breakdown",
+            "tabs"
+          ]
+        },
+        {
+          "id": "back_row",
+          "component": "Row",
+          "children": [
+            "back_btn"
+          ]
+        },
+        {
+          "id": "back_btn",
+          "component": "Button",
+          "child": "back_btn_label",
+          "action": {
+            "event": {
+              "name": "backToHotels",
+              "context": {}
+            }
+          }
+        },
+        {
+          "id": "back_btn_label",
+          "component": "Text",
+          "text": "← Back to hotels"
+        },
+        {
+          "id": "hero_img",
+          "component": "Image",
+          "url": {
+            "path": "hotel/imageUrl"
+          },
+          "fit": "cover"
+        },
+        {
+          "id": "gallery_row",
+          "component": "Row",
+          "gap": 8,
+          "children": [
+            "gal_0",
+            "gal_1",
+            "gal_2"
+          ]
+        },
+        {
+          "id": "gal_0",
+          "component": "Image",
+          "url": "https://images.unsplash.com/photo-1590490360182-c33d57733427?w=300&h=200&q=80&auto=format&fit=crop",
+          "fit": "cover"
+        },
+        {
+          "id": "gal_1",
+          "component": "Image",
+          "url": "https://images.unsplash.com/photo-1445019980597-93fa8acb246c?w=300&h=200&q=80&auto=format&fit=crop",
+          "fit": "cover"
+        },
+        {
+          "id": "gal_2",
+          "component": "Image",
+          "url": "https://images.unsplash.com/photo-1560448204-e02f11c3d0e2?w=300&h=200&q=80&auto=format&fit=crop",
+          "fit": "cover"
+        },
+        {
+          "id": "head",
+          "component": "Column",
+          "gap": 2,
+          "children": [
+            "hotel_name",
+            "hotel_area"
+          ]
+        },
+        {
+          "id": "hotel_name",
+          "component": "Text",
+          "variant": "h2",
+          "text": {
+            "path": "hotel/name"
+          }
+        },
+        {
+          "id": "hotel_area",
+          "component": "Text",
+          "variant": "caption",
+          "text": {
+            "path": "hotel/area"
+          }
+        },
+        {
+          "id": "rating_row",
+          "component": "Row",
+          "gap": 8,
+          "align": "center",
+          "children": [
+            "rating_badge",
+            "rating_caption",
+            "rating_type"
+          ]
+        },
+        {
+          "id": "rating_badge",
+          "component": "Badge",
+          "tone": "success",
+          "text": {
+            "path": "hotel/ratingLabel"
+          }
+        },
+        {
+          "id": "rating_caption",
+          "component": "Text",
+          "variant": "caption",
+          "text": "Guest rating"
+        },
+        {
+          "id": "rating_type",
+          "component": "Badge",
+          "tone": "neutral",
+          "text": {
+            "path": "hotel/propertyType"
+          }
+        },
+        {
+          "id": "rating_breakdown",
+          "component": "Text",
+          "variant": "caption",
+          "text": {
+            "path": "hotel/ratingBreakdownLabel"
+          }
+        },
+        {
+          "id": "tabs",
+          "component": "Tabs",
+          "tabs": [
+            {
+              "id": "overview",
+              "label": "Overview"
+            },
+            {
+              "id": "rooms",
+              "label": "Rooms"
+            }
+          ],
+          "panels": {
+            "overview": "panel_overview",
+            "rooms": "panel_rooms"
+          }
+        },
+        {
+          "id": "panel_overview",
+          "component": "Column",
+          "gap": 12,
+          "children": [
+            "overview_text",
+            "highlight_label",
+            "highlight_row",
+            "amenity_label",
+            "amenity_row",
+            "policy_row"
+          ]
+        },
+        {
+          "id": "overview_text",
+          "component": "Text",
+          "variant": "body",
+          "text": {
+            "path": "hotel/blurb"
+          }
+        },
+        {
+          "id": "highlight_label",
+          "component": "Text",
+          "variant": "caption",
+          "text": "Highlights"
+        },
+        {
+          "id": "highlight_row",
+          "component": "Row",
+          "gap": 8,
+          "wrap": true,
+          "children": [
+            "hl_0",
+            "hl_1",
+            "hl_2"
+          ]
+        },
+        {
+          "id": "hl_0",
+          "component": "Badge",
+          "tone": "brand",
+          "text": "Exceptional cleanliness"
+        },
+        {
+          "id": "hl_1",
+          "component": "Badge",
+          "tone": "brand",
+          "text": "Excellent location"
+        },
+        {
+          "id": "hl_2",
+          "component": "Badge",
+          "tone": "brand",
+          "text": "Guest favourite"
+        },
+        {
+          "id": "amenity_label",
+          "component": "Text",
+          "variant": "caption",
+          "text": "Amenities"
+        },
+        {
+          "id": "amenity_row",
+          "component": "Row",
+          "gap": 8,
+          "wrap": true,
+          "children": [
+            "am_0",
+            "am_1",
+            "am_2",
+            "am_3",
+            "am_4"
+          ]
+        },
+        {
+          "id": "am_0",
+          "component": "Badge",
+          "tone": "neutral",
+          "text": "Fitness centre"
+        },
+        {
+          "id": "am_1",
+          "component": "Badge",
+          "tone": "neutral",
+          "text": "Parking"
+        },
+        {
+          "id": "am_2",
+          "component": "Badge",
+          "tone": "neutral",
+          "text": "Spa"
+        },
+        {
+          "id": "am_3",
+          "component": "Badge",
+          "tone": "neutral",
+          "text": "Restaurant"
+        },
+        {
+          "id": "am_4",
+          "component": "Badge",
+          "tone": "neutral",
+          "text": "24-hr front desk"
+        },
+        {
+          "id": "policy_row",
+          "component": "Column",
+          "gap": 4,
+          "children": [
+            "policy_checkin",
+            "policy_cancel"
+          ]
+        },
+        {
+          "id": "policy_checkin",
+          "component": "Text",
+          "variant": "caption",
+          "text": "Check-in from 2:00 PM · Check-out until 11:00 AM"
+        },
+        {
+          "id": "policy_cancel",
+          "component": "Text",
+          "variant": "caption",
+          "text": "Free cancellation available on every room up to 24 hours before check-in"
+        },
+        {
+          "id": "panel_rooms",
+          "component": "Column",
+          "gap": 14,
+          "children": [
+            "stay_form",
+            "room_list"
+          ]
+        },
+        {
+          "id": "stay_form",
+          "component": "Row",
+          "gap": 12,
+          "align": "end",
+          "wrap": true,
+          "children": [
+            "stay_checkin",
+            "stay_checkout",
+            "stay_adults",
+            "stay_children"
+          ]
+        },
+        {
+          "id": "stay_checkin",
+          "component": "TextField",
+          "label": "Check-in",
+          "inputType": "date",
+          "path": "/booking/checkIn",
+          "min": {
+            "path": "/booking/checkInMin"
+          }
+        },
+        {
+          "id": "stay_checkout",
+          "component": "TextField",
+          "label": "Check-out",
+          "inputType": "date",
+          "path": "/booking/checkOut",
+          "min": {
+            "path": "/booking/checkOutMin"
+          }
+        },
+        {
+          "id": "stay_adults",
+          "component": "ChoicePicker",
+          "label": "Adults",
+          "options": [
+            1,
+            2,
+            3,
+            4
+          ],
+          "path": "/booking/adults"
+        },
+        {
+          "id": "stay_children",
+          "component": "ChoicePicker",
+          "label": "Children",
+          "options": [
+            0,
+            1,
+            2,
+            3
+          ],
+          "path": "/booking/children"
+        },
+        {
+          "id": "room_list",
+          "component": "List",
+          "children": {
+            "path": "/rooms",
+            "componentId": "room_row"
+          }
+        },
+        {
+          "id": "room_row",
+          "component": "Row",
+          "gap": 16,
+          "align": "stretch",
+          "children": [
+            "rr_img",
+            "rr_meta"
+          ]
+        },
+        {
+          "id": "rr_img",
+          "component": "Image",
+          "url": {
+            "path": "imageUrl"
+          }
+        },
+        {
+          "id": "rr_meta",
+          "component": "Column",
+          "weight": 1,
+          "gap": 6,
+          "children": [
+            "rr_top",
+            "rr_amenities",
+            "rr_bottom"
+          ]
+        },
+        {
+          "id": "rr_top",
+          "component": "Row",
+          "align": "center",
+          "gap": 8,
+          "children": [
+            "rr_name",
+            "rr_sleeps"
+          ]
+        },
+        {
+          "id": "rr_name",
+          "component": "Text",
+          "variant": "h3",
+          "text": {
+            "path": "name"
+          }
+        },
+        {
+          "id": "rr_sleeps",
+          "component": "Badge",
+          "tone": "neutral",
+          "text": {
+            "path": "sleepsLabel"
+          }
+        },
+        {
+          "id": "rr_amenities",
+          "component": "Row",
+          "gap": 6,
+          "children": [
+            "rr_cancel"
+          ]
+        },
+        {
+          "id": "rr_cancel",
+          "component": "Badge",
+          "tone": "success",
+          "text": "Free cancellation"
+        },
+        {
+          "id": "rr_bottom",
+          "component": "Row",
+          "justify": "between",
+          "align": "center",
+          "children": [
+            "rr_price_col",
+            "rr_btn"
+          ]
+        },
+        {
+          "id": "rr_price_col",
+          "component": "Column",
+          "gap": 0,
+          "children": [
+            "rr_price",
+            "rr_pernight"
+          ]
+        },
+        {
+          "id": "rr_price",
+          "component": "Text",
+          "variant": "h3",
+          "text": {
+            "call": "formatCurrency",
+            "args": {
+              "value": {
+                "path": "price"
+              },
+              "currency": "INR"
+            }
+          }
+        },
+        {
+          "id": "rr_pernight",
+          "component": "Text",
+          "variant": "caption",
+          "text": "/ night"
+        },
+        {
+          "id": "rr_btn_label",
+          "component": "Text",
+          "text": "Book this room"
+        },
+        {
+          "id": "rr_btn",
+          "component": "Button",
+          "variant": "primary",
+          "child": "rr_btn_label",
+          "action": {
+            "event": {
+              "name": "selectRoom",
+              "context": {
+                "roomId": {
+                  "path": "id"
+                },
+                "checkIn": {
+                  "path": "/booking/checkIn"
+                },
+                "checkOut": {
+                  "path": "/booking/checkOut"
+                },
+                "adults": {
+                  "path": "/booking/adults"
+                },
+                "children": {
+                  "path": "/booking/children"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateDataModel": {
+      "surfaceId": "hotels",
+      "path": "/hotel",
+      "value": {
+        "name": "The Whispering Pines",
+        "area": "Lake View",
+        "imageUrl": "https://images.unsplash.com/photo-1571003123894-1f0594d2b5d9?w=800&h=520&q=80&auto=format&fit=crop",
+        "ratingLabel": "4.5★ (290 reviews)",
+        "propertyType": "Hotel",
+        "ratingBreakdownLabel": "Facilities 4.4 · Cleanliness 4.3 · Service 4.4 · Location 4.6",
+        "blurb": "The Whispering Pines is a highly-rated stay in Lake View, popular for its comfort, service and location. Guests consistently call out the attentive staff and spotless rooms as reasons to book again."
+      }
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateDataModel": {
+      "surfaceId": "hotels",
+      "path": "/rooms",
+      "value": [
+        {
+          "id": "RM00",
+          "name": "Standard Room",
+          "price": 2656,
+          "imageSeed": "goa-the-whispering-pines-room-0",
+          "capacity": 2,
+          "imageUrl": "https://images.unsplash.com/photo-1596394516093-501ba68a0ba6?w=640&h=420&q=80&auto=format&fit=crop",
+          "sleepsLabel": "Sleeps 2",
+          "recommended": false
+        },
+        {
+          "id": "RM01",
+          "name": "Twin Room",
+          "price": 2922,
+          "imageSeed": "goa-the-whispering-pines-room-1",
+          "capacity": 2,
+          "imageUrl": "https://images.unsplash.com/photo-1582719508461-905c673771fd?w=640&h=420&q=80&auto=format&fit=crop",
+          "sleepsLabel": "Sleeps 2",
+          "recommended": true
+        },
+        {
+          "id": "RM02",
+          "name": "Deluxe Room",
+          "price": 3586,
+          "imageSeed": "goa-the-whispering-pines-room-2",
+          "capacity": 2,
+          "imageUrl": "https://images.unsplash.com/photo-1595576508898-0ad5c879a061?w=640&h=420&q=80&auto=format&fit=crop",
+          "sleepsLabel": "Sleeps 2",
+          "recommended": false
+        },
+        {
+          "id": "RM03",
+          "name": "Executive Room",
+          "price": 4515,
+          "imageSeed": "goa-the-whispering-pines-room-3",
+          "capacity": 2,
+          "imageUrl": "https://images.unsplash.com/photo-1618773928121-c32242e63f39?w=640&h=420&q=80&auto=format&fit=crop",
+          "sleepsLabel": "Sleeps 2",
+          "recommended": false
+        },
+        {
+          "id": "RM04",
+          "name": "Family Room",
+          "price": 5046,
+          "imageSeed": "goa-the-whispering-pines-room-4",
+          "capacity": 4,
+          "imageUrl": "https://images.unsplash.com/photo-1631049307264-da0ec9d70304?w=640&h=420&q=80&auto=format&fit=crop",
+          "sleepsLabel": "Sleeps 4",
+          "recommended": false
+        }
+      ]
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateDataModel": {
+      "surfaceId": "hotels",
+      "path": "/booking",
+      "value": {
+        "checkIn": "2026-09-10",
+        "checkOut": "2026-09-13",
+        "adults": 2,
+        "children": 0,
+        "checkInMin": "2026-09-04",
+        "checkOutMin": "2026-09-11"
+      }
+    }
+  }
+]

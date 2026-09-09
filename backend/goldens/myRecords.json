@@ -1,0 +1,181 @@
+[
+  {
+    "version": "v0.9.1",
+    "createSurface": {
+      "surfaceId": "records",
+      "catalogId": "https://voyage.ai/catalogs/travel/v1",
+      "theme": {
+        "primaryColor": "#1c1e2e",
+        "agentDisplayName": "My Trips"
+      },
+      "sendDataModel": false
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateComponents": {
+      "surfaceId": "records",
+      "components": [
+        {
+          "id": "root",
+          "component": "Card",
+          "child": "body"
+        },
+        {
+          "id": "body",
+          "component": "Column",
+          "children": [
+            "head",
+            "list"
+          ]
+        },
+        {
+          "id": "head",
+          "component": "Text",
+          "variant": "h2",
+          "text": "Your saved plans"
+        },
+        {
+          "id": "list",
+          "component": "List",
+          "layout": "grid",
+          "children": {
+            "path": "/records",
+            "componentId": "record_row"
+          }
+        },
+        {
+          "id": "record_row",
+          "component": "Column",
+          "gap": 8,
+          "panel": true,
+          "children": [
+            "rec_img",
+            "rec_top",
+            "rec_meta",
+            "rec_bottom"
+          ]
+        },
+        {
+          "id": "rec_img",
+          "component": "Image",
+          "url": {
+            "path": "imageUrl"
+          }
+        },
+        {
+          "id": "rec_top",
+          "component": "Row",
+          "justify": "between",
+          "align": "center",
+          "gap": 8,
+          "children": [
+            "rec_title",
+            "rec_status"
+          ]
+        },
+        {
+          "id": "rec_title",
+          "component": "Text",
+          "variant": "h3",
+          "text": {
+            "path": "title"
+          }
+        },
+        {
+          "id": "rec_status",
+          "component": "Badge",
+          "tone": "success",
+          "text": {
+            "path": "statusLabel"
+          }
+        },
+        {
+          "id": "rec_meta",
+          "component": "Text",
+          "variant": "caption",
+          "text": {
+            "path": "dateLabel"
+          }
+        },
+        {
+          "id": "rec_bottom",
+          "component": "Row",
+          "justify": "between",
+          "align": "center",
+          "children": [
+            "rec_price",
+            "rec_btn"
+          ]
+        },
+        {
+          "id": "rec_price",
+          "component": "Text",
+          "variant": "h3",
+          "text": {
+            "path": "priceLabel"
+          }
+        },
+        {
+          "id": "rec_btn_label",
+          "component": "Text",
+          "text": "View details"
+        },
+        {
+          "id": "rec_btn",
+          "component": "Button",
+          "variant": "primary",
+          "child": "rec_btn_label",
+          "action": {
+            "event": {
+              "name": "viewRecordDetail",
+              "context": {
+                "recordId": {
+                  "path": "id"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  {
+    "version": "v0.9.1",
+    "updateDataModel": {
+      "surfaceId": "records",
+      "path": "/records",
+      "value": [
+        {
+          "id": "p1",
+          "title": "Goa long weekend",
+          "destination": "Goa",
+          "imageUrl": null,
+          "createdAt": "2026-08-20T10:00:00Z",
+          "totalPrice": 24500,
+          "bookingRef": "PRZ-4821",
+          "travelDate": "2026-09-10",
+          "hasFlight": true,
+          "hasRoom": true,
+          "priceLabel": "₹24500",
+          "dateLabel": "2026-09-10",
+          "statusLabel": "Booked"
+        },
+        {
+          "id": "p2",
+          "title": "Jaipur heritage run",
+          "destination": "Jaipur",
+          "imageUrl": null,
+          "createdAt": "2026-07-11T09:30:00Z",
+          "totalPrice": 18200,
+          "travelDate": null,
+          "hasFlight": true,
+          "hasRoom": false,
+          "priceLabel": "₹18200",
+          "dateLabel": "Saved 7/11/2026",
+          "statusLabel": ""
+        }
+      ]
+    }
+  }
+]

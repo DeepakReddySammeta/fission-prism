@@ -1,0 +1,52 @@
+[
+  {
+    "id": "root",
+    "component": "Card",
+    "child": "appointmentList"
+  },
+  {
+    "id": "appointmentList",
+    "component": "List",
+    "layout": "stack",
+    "children": {
+      "componentId": "appointmentRow",
+      "path": "/appointments"
+    }
+  },
+  {
+    "id": "appointmentRow",
+    "component": "Row",
+    "gap": 8,
+    "children": [
+      "headingText",
+      "labelDoctor",
+      "valueDoctor",
+      "labelSpecialty",
+      "valueSpecialty",
+      "labelHospital",
+      "valueHospital",
+      "labelDate",
+      "valueDate",
+      "labelRef",
+      "valueRef"
+    ]
+  },
+  {
+    "id": "headingText",
+    "component": "Text",
+    "text": "Upcoming Appointments",
+    "variant": "h2"
+  },
+  {
+    "id": "labelDoctor",
+    "component": "Text",
+    "text": "Doctor:",
+    "variant": "body"
+  },
+  {
+    "id": "valueDoctor",
+    "component": "Text",
+    "path": "doctorName",
+    "variant": "body"
+  }
+]
