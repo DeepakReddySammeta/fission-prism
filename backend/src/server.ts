@@ -11,6 +11,8 @@ import { routeQuery, APP_OF, type Route, type MyRecordsIntent, type Appointments
 import { getFlightOptions } from './agents/flights';
 import { getHotelOptions } from './agents/hotels';
 import { getDestinationSuggestions } from './agents/destinations';
+import { getBookOptions, getBookDetail } from './agents/books';
+import { getMovieOptions, getMovieDetail } from './agents/movies';
 import { pickRecommendedFlight, pickRecommendedHotel, pickRecommendedRoom } from './agents/recommend';
 import { getDoctorMatches, normalizeSpecialty, findDoctorByName, type DoctorMatch } from './agents/health';
 import { type FinanceQuery } from './agents/finance';
@@ -29,6 +31,7 @@ import {
   appointmentsSurface, budgetBreakdownSurface, expenseLoggedSurface, savingsGoalSurface, savingsGoalsListSurface,
   financeSummarySurface, portfolioSurface, goalsAnalysisSurface, weatherSurface,
   expensesBreakdownSurface, cashFlowSurface, budgetUtilizationSurface, recentExpensesSurface,
+  booksSurface, bookDetailSurface, moviesSurface, movieDetailSurface,
   inr, formatAppointmentDate, hotelImage, roomImage, destinationImage, flightImage, flightDetails, hotelDetails, cabinPriceMultiplier,
 } from './orchestrator/envelopes';
 import { buildSurface } from './orchestrator/uiAgent';
@@ -47,6 +50,7 @@ const GOALS = {
   rooms: 'The traveller picked a hotel; show its room types so they can pick one and see dates/guests. Available action: selectRoom, context { roomId }; also a back-to-hotels action may be offered.',
   trip: 'Show the traveller\'s trip summary so far: destination, dates, flight, hotel, room, and running total. If everything needed is chosen, offer to book. Available action: bookTrip, context { guestName }.',
   weather: 'Show the current weather for a place: temperature, feels-like, condition (with its icon), humidity, wind, plus a short multi-day forecast strip (day label, icon, high/low). Mention it is a live third-party reading, not a saved trip record. Read-only, no actions.',
+  books: 'Show book search results: title, authors, first publish year, and cover image if available. Read-only, no actions.',
 };
 
 /** buildSurface(...).then((envs) => emitAll(sessionId, envs)) fire-and-forget,
@@ -225,6 +229,24 @@ function dispatch(route: Route, user: AuthUser | undefined): PlanResponse {
       return { sessionId: session.id, intent };
     }
 
+    case 'books': {
+      const session = createSession();
+      session.pendingBooks = route.books;
+      return {
+        sessionId: session.id,
+        intent: { intent: 'search_books', destination: '', agents: ['books'], summary: route.summary, bookQuery: route.books.query },
+      };
+    }
+
+    case 'movies': {
+      const session = createSession();
+      session.pendingMovies = route.movies;
+      return {
+        sessionId: session.id,
+        intent: { intent: 'search_movies', destination: '', agents: ['movies'], summary: route.summary },
+      };
+    }
+
     default:
       return refine(route.summary);
   }
@@ -291,6 +313,10 @@ app.get<{ Params: { sessionId: string } }>('/api/events/:sessionId', async (req,
       runWeather(sessionId, session.pendingWeather);
     } else if (session.pendingDoctorLookup) {
       runDoctorLookup(sessionId, session.pendingDoctorLookup, session.pendingDoctorView, session.pendingDoctorHints);
+    } else if (session.pendingBooks) {
+      runBooks(sessionId, session.pendingBooks);
+    } else if (session.pendingMovies) {
+      runMovies(sessionId, session.pendingMovies);
     } else if (session.pendingIntent) {
       runAgents(sessionId, session.pendingIntent);
     }
@@ -471,6 +497,52 @@ function runWeather(sessionId: string, pending: { place: string } | undefined) {
  * (doctorsCache/activeDoctorId) the find_doctor flow's own viewDoctorProfile
  * action does, so confirmAppointment works completely unchanged regardless
  * of which path got the traveler to this card. */
+function runBooks(sessionId: string, pending: { query: string } | undefined) {
+  if (!pending) return;
+  beginWork(sessionId);
+  emitStatus(sessionId, `Searching books for "${pending.query}"…`);
+  getBookOptions(pending.query)
+    .then((books) => {
+      const s = getSession(sessionId);
+      if (!s) return;
+      if (books.length === 0) {
+        emitStatus(sessionId, 'No books found for that search.');
+        return;
+      }
+      emitStatus(sessionId, `Found ${books.length} book${books.length === 1 ? '' : 's'}.`);
+      // Bypass the LLM layout generator — books have a reliable hand-written layout.
+      emitAll(sessionId, booksSurface('books', books));
+    })
+    .catch((err) => {
+      console.error('[runBooks] search failed:', err);
+      emitStatus(sessionId, 'Book search failed — please try again.');
+    })
+    .finally(() => endWork(sessionId));
+}
+
+function runMovies(sessionId: string, pending: { query: string } | undefined) {
+  if (!pending) return;
+  beginWork(sessionId);
+  emitStatus(sessionId, `Searching movies for "${pending.query}"…`);
+  getMovieOptions(pending.query)
+    .then((movies) => {
+      const s = getSession(sessionId);
+      if (!s) return;
+      if (movies.length === 0) {
+        emitStatus(sessionId, 'No movies found for that search.');
+        return;
+      }
+      emitStatus(sessionId, `Found ${movies.length} movie${movies.length === 1 ? '' : 's'}.`);
+      // Bypass the LLM layout generator — movies have a reliable hand-written layout.
+      emitAll(sessionId, moviesSurface('movies', movies));
+    })
+    .catch((err) => {
+      console.error('[runMovies] search failed:', err);
+      emitStatus(sessionId, 'Movie search failed — please try again.');
+    })
+    .finally(() => endWork(sessionId));
+}
+
 function runDoctorLookup(
   sessionId: string, doctor: DoctorMatch, view?: 'overview' | 'book', hints?: { preferredDate?: string; preferredTime?: string }
 ) {
@@ -1423,6 +1495,10 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
       `Show doctor matches for specialty "${specialty}": name, qualifications, expertise, languages, hospital, rating, consultation fee, photo. Available actions: viewDoctorProfile, context { name }; startDoctorBooking, context { name }.`,
       () => doctorsSurface('health', specialty, matches));
   }
+
+  if (intent.agents.includes('books') && intent.bookQuery) {
+    runBooks(sessionId, { query: intent.bookQuery });
+  }
 }
 
 app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHandler: optionalAuth }, async (req, reply) => {
@@ -1582,6 +1658,26 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
       session.trip.bookingRef = `VOY-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
       upsertTripPlan(session, req.user?.id);
       emitSurface(sessionId, 'trip', GOALS.trip, () => tripSummarySurface('trip', session.trip));
+    }
+  }
+
+  if (name === 'viewBookDetails') {
+    const bookKey = String(context.bookKey || '').trim();
+    if (bookKey) {
+      const book = await getBookDetail(bookKey);
+      if (book) {
+        emitAll(sessionId, bookDetailSurface('bookDetail', book));
+      }
+    }
+  }
+
+  if (name === 'viewMovieDetails') {
+    const movieId = String(context.movieId || '').trim();
+    if (movieId) {
+      const movie = await getMovieDetail(movieId);
+      if (movie) {
+        emitAll(sessionId, movieDetailSurface('movieDetail', movie));
+      }
     }
   }
 

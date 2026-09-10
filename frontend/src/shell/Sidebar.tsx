@@ -9,7 +9,7 @@ import { APPS, classifyApp, type AppId } from './apps';
 import { PrismMark } from './PrismMark';
 import { Button } from '@/components/ui/button';
 import {
-  PanelLeftClose, PanelLeftOpen, Plane, Stethoscope, Wallet,
+  PanelLeftClose, PanelLeftOpen, Plane, Stethoscope, Wallet, Book, Film,
   Cloud, CloudSun, Briefcase, Bookmark, CalendarDays, Star, ChevronRight,
 } from 'lucide-react';
 
@@ -17,6 +17,8 @@ const APP_ICONS: Record<AppId, React.ReactNode> = {
   trip: <Plane size={15} />,
   health: <Stethoscope size={15} />,
   finance: <Wallet size={15} />,
+  books: <Book size={15} />,
+  movies: <Film size={15} />,
 };
 
 const THEME_KEY = 'fission-exp-theme';

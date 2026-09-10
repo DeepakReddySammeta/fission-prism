@@ -61,6 +61,8 @@ export type Route =
   | { tool: 'my_records'; summary: string; my_records: MyRecordsIntent }
   | { tool: 'appointments'; summary: string; appointments: AppointmentsQuery }
   | { tool: 'finance'; summary: string; finance: FinanceQuery }
+  | { tool: 'books'; summary: string; books: { query: string } }
+  | { tool: 'movies'; summary: string; movies: { query: string } }
   /** Off-topic, too vague, or missing something a tool needs — `summary` is
    * the question back to the user, or the honest "I can't do that". */
   | { tool: 'clarify'; summary: string };
@@ -68,10 +70,12 @@ export type Route =
 /** Which of the three sidebar "apps" a tool belongs to. The router already
  * knows this, so the frontend doesn't have to re-classify the raw query with
  * its own keyword list — it just reads what ran. */
-export const APP_OF: Record<Route['tool'], 'trip' | 'health' | 'finance' | null> = {
+export const APP_OF: Record<Route['tool'], 'trip' | 'health' | 'finance' | 'books' | 'movies' | null> = {
   trip: 'trip', destinations: 'trip', weather: 'trip', hotel_rooms: 'trip', my_records: 'trip',
   doctors: 'health', doctor_lookup: 'health', appointments: 'health',
   finance: 'finance',
+  books: 'books',
+  movies: 'movies',
   clarify: null,
 };
 
@@ -144,6 +148,12 @@ finance — anything about the user's own money. Exactly one of these argument s
   { "kind": "unsupported", "action": "<what they asked for>" }  — connecting a bank, paying a bill, investment advice
   Amounts: "60k" -> 60000, "1 lakh"/"1L" -> 100000, "5,00,000" -> 500000. Always a plain number.
   Categories: ${CATEGORIES.join(', ')}. Use "Other" when nothing fits.
+
+books — reading recommendations, book search, or anything the user wants to read. "find me books on python", "reading recommendations for personal finance", "who wrote The Alchemist", "what should I read about investing", "search Harry Potter".
+  { "query": string }
+
+movies — movie search, recommendations, or anything about films. "find me movies with Tom Hanks", "top rated sci-fi movies", "what's the movie Inception about", "search The Dark Knight".
+  { "query": string }
 
 clarify — off-topic, too vague, or missing something a tool needs. No argument object; put the question, or the honest "I can't do that yet", in "summary".
 
@@ -330,6 +340,14 @@ export function toRoute(raw: any): Route {
           ? { kind: 'unsupported', action: str(args.action) || 'change' }
           : { kind: 'list', filter: oneOf(args.filter, ['upcoming', 'past', 'today', 'all'] as const, 'all'), reference: str(args.reference) },
       };
+    case 'books': {
+      const query = str(args.query);
+      return query ? { tool: 'books', summary, books: { query } } : { tool: 'clarify', summary };
+    }
+    case 'movies': {
+      const query = str(args.query);
+      return query ? { tool: 'movies', summary, movies: { query } } : { tool: 'clarify', summary };
+    }
     case 'finance':
       return { tool: 'finance', summary, finance: toFinance(args) };
     default:

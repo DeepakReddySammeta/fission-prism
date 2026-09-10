@@ -19,7 +19,7 @@ export const CATALOG_ID = 'https://voyage.ai/catalogs/travel/v1';
 
 /* ---------------- Domain types (trip planning) ---------------- */
 
-export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations' | 'find_doctor';
+export type IntentKind = 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'explore_destinations' | 'find_doctor' | 'check_weather' | 'search_books' | 'search_movies';
 
 export interface ParsedIntent {
   intent: IntentKind;
@@ -29,10 +29,10 @@ export interface ParsedIntent {
    * other intent path (which does rely on it) can't accidentally forget it. */
   destination: string;
   durationNights?: number;
-  agents: Array<'flights' | 'hotels' | 'health'>;
+  agents: Array<'flights' | 'hotels' | 'health' | 'books' | 'movies'>;
   /** Which sidebar "app" the tool that answered belongs to — set by the
    * backend from the router's own choice. */
-  app?: 'trip' | 'health' | 'finance' | null;
+  app?: 'trip' | 'health' | 'finance' | 'books' | 'movies' | null;
   /** ISO dates (YYYY-MM-DD) the router extracted from the query, if present */
   checkIn?: string;
   checkOut?: string;
@@ -47,6 +47,8 @@ export interface ParsedIntent {
   /** Free text naming a specific hotel to pick out of a plan_trip's hotel
    * results, matched the same best-effort way. */
   hotelQuery?: string;
+  /** For "search_books", the query string passed to the OpenLibrary search. */
+  bookQuery?: string;
   /** True when the message uses booking language ("book", "reserve") rather
    * than just browsing ("show me", "plan a trip"). Drives auto-picking one
    * flight/hotel even when no specific time or name was given — falling
@@ -221,4 +223,58 @@ export interface WeatherReading {
   timezone: string;
   provider: string;
   daily: { date: string; minC: number; maxC: number; condition: string }[];
+}
+
+/* ---------------- Books (OpenLibrary) ---------------- */
+
+export interface BookOption {
+  id: string;
+  title: string;
+  authors: string[];
+  firstPublishYear?: number;
+  publishers?: string[];
+  isbn?: string[];
+  /** OpenLibrary cover image id — used to build a cover URL. */
+  coverId?: number;
+  subjects?: string[];
+}
+
+export interface BookDetail {
+  id: string;
+  title: string;
+  authors: string[];
+  publishDate?: string;
+  publishers?: string[];
+  isbn10?: string[];
+  isbn13?: string[];
+  pages?: number;
+  subjects?: string[];
+  coverUrl?: string;
+  description?: string;
+}
+
+/* ---------------- Movies (TMDB) ---------------- */
+
+export interface MovieOption {
+  id: string;
+  title: string;
+  overview: string;
+  posterPath: string;
+  releaseDate?: string;
+  rating?: number;
+  genreIds: number[];
+}
+
+export interface MovieDetail {
+  id: string;
+  title: string;
+  overview: string;
+  posterUrl: string;
+  backdropUrl: string;
+  releaseDate?: string;
+  runtime?: number;
+  rating?: number;
+  genres: string[];
+  tagline?: string;
+  status?: string;
 }

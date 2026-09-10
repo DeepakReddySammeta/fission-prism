@@ -1,0 +1,132 @@
+openapi: '3.0.3'
+info:
+  title: OpenLibrary Search API
+  version: '1.0.0'
+  description: OpenLibrary public REST API for searching books by title, author, or keyword.
+
+servers:
+  - url: https://openlibrary.org
+
+paths:
+  /search.json:
+    get:
+      operationId: searchBooks
+      summary: Search for books by query string
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query (title, author, keyword)
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 10
+          description: Maximum number of results to return
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number for paginated results
+      responses:
+        '200':
+          description: Successful search response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  numFound:
+                    type: integer
+                  docs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        title:
+                          type: string
+                        author_name:
+                          type: array
+                          items:
+                            type: string
+                        first_publish_year:
+                          type: integer
+                        publisher:
+                          type: array
+                          items:
+                            type: string
+                        isbn:
+                          type: array
+                          items:
+                            type: string
+                        cover_i:
+                          type: integer
+                        subject:
+                          type: array
+                          items:
+                            type: string
+
+  /books/{bibKey}.json:
+    get:
+      operationId: getBookByKey
+      summary: Fetch detailed info for a specific book by its OpenLibrary key
+      parameters:
+        - name: bibKey
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The OpenLibrary book key (e.g. OL12345M)
+      responses:
+        '200':
+          description: Book details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title:
+                    type: string
+                  authors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                  publish_date:
+                    type: string
+                  publishers:
+                    type: array
+                    items:
+                      type: string
+                  isbn_10:
+                    type: array
+                    items:
+                      type: string
+                  isbn_13:
+                    type: array
+                    items:
+                      type: string
+                  number_of_pages:
+                    type: integer
+                  subjects:
+                    type: array
+                    items:
+                      type: string
+                  cover:
+                    type: object
+                    properties:
+                      small:
+                        type: string
+                      medium:
+                        type: string
+                      large:
+                        type: string   

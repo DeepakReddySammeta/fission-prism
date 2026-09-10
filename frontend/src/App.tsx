@@ -399,6 +399,19 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
   // standalone ("what's the weather in X") or as a cross-sell alongside a
   // flights/hotels search.
   const weatherSurface = runtime.getSurface('weather');
+  // Book search results from the OpenLibrary API — standalone surface, no
+  // actions (pure browse), rendered like destinations/weather above the
+  // travel results when present.
+  const booksSurface = runtime.getSurface('books');
+  // Book detail view — opened when the user taps "View Details" on a book
+  // row. Its own surfaceId so it doesn't overwrite the search results list.
+  const bookDetailSurface = runtime.getSurface('bookDetail');
+  // Movie search results from the TMDB API — standalone surface, rendered
+  // like books/destinations/weather above the travel results when present.
+  const moviesSurface = runtime.getSurface('movies');
+  // Movie detail view — opened when the user taps "View Details" on a movie
+  // row. Its own surfaceId so it doesn't overwrite the search results list.
+  const movieDetailSurface = runtime.getSurface('movieDetail');
 
   const expectedAgents = intent?.agents || [];
   const flightsPending = expectedAgents.includes('flights') && !(flightsSurface && componentCount(flightsSurface) > 0);
@@ -477,6 +490,30 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
           {componentCount(weatherSurface) > 0 && (
             <div className="reveal">
               <Surface surface={weatherSurface} className="surface-weather" />
+            </div>
+          )}
+
+          {componentCount(booksSurface) > 0 && (
+            <div className="reveal">
+              <Surface surface={booksSurface} className="surface-books" />
+            </div>
+          )}
+
+          {componentCount(bookDetailSurface) > 0 && (
+            <div className="reveal">
+              <Surface surface={bookDetailSurface} className="surface-book-detail" />
+            </div>
+          )}
+
+          {componentCount(moviesSurface) > 0 && (
+            <div className="reveal">
+              <Surface surface={moviesSurface} className="surface-movies" />
+            </div>
+          )}
+
+          {componentCount(movieDetailSurface) > 0 && (
+            <div className="reveal">
+              <Surface surface={movieDetailSurface} className="surface-movie-detail" />
             </div>
           )}
 
