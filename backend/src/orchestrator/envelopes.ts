@@ -1,5 +1,5 @@
 import type {
-  ComponentDef, DestinationSuggestion, DoctorOption, Envelope, FlightOption, HospitalOption, HotelOption, RoomOption, TripSummary, WeatherReading,
+  BookOption, BookDetail, MovieOption, MovieDetail, ComponentDef, DestinationSuggestion, DoctorOption, Envelope, FlightOption, HospitalOption, HotelOption, RoomOption, TripSummary, WeatherReading,
 } from '../types';
 import type { DoctorMatch, BookingHints } from '../agents/health';
 import { APPOINTMENT_TIME_SLOTS } from '../agents/health';
@@ -1897,6 +1897,195 @@ export function weatherSurface(surfaceId: string, reading: WeatherReading): Enve
         components: [
           { id: 'root', component: 'Card', child: 'body' },
           { id: 'body', component: 'Text', variant: 'body', text: { path: 'place' } },
+        ],
+      },
+    },
+    updateData(surfaceId, '/', data),
+  ];
+}
+
+/* ---------------- Books (OpenLibrary) ---------------- */
+
+function coverUrl(coverId?: number): string {
+  if (!coverId) return '';
+  return `https://covers.openlibrary.org/b/id/${coverId}-M.jpg`;
+}
+
+export function booksSurface(surfaceId: string, books: BookOption[]): Envelope[] {
+  const rows = books.map((b) => ({
+    ...b,
+    coverUrl: coverUrl(b.coverId),
+    authorsLabel: b.authors.join(', ') || 'Unknown author',
+    yearLabel: b.firstPublishYear ? `First published ${b.firstPublishYear}` : '',
+    subjectsLabel: b.subjects?.slice(0, 3).join(' · ') ?? '',
+  }));
+
+  return [
+    createSurface(surfaceId, 'Books', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', gap: 12, children: ['head', 'subhead', 'list'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: 'Books' },
+          { id: 'subhead', component: 'Text', variant: 'caption', text: 'Search results from OpenLibrary.' },
+          { id: 'list', component: 'List', children: { path: '/books', componentId: 'book_row' } },
+
+          { id: 'book_row', component: 'Row', gap: 16, align: 'center', children: ['br_cover', 'br_body'] },
+          { id: 'br_cover', component: 'Image', url: { path: 'coverUrl' }, height: 120 },
+          { id: 'br_body', component: 'Column', weight: 1, gap: 6, children: ['br_title', 'br_authors', 'br_year', 'br_subjects', 'br_detail_btn'] },
+          { id: 'br_title', component: 'Text', variant: 'h3', text: { path: 'title' } },
+          { id: 'br_authors', component: 'Text', variant: 'body', text: { path: 'authorsLabel' } },
+          { id: 'br_year', component: 'Text', variant: 'caption', text: { path: 'yearLabel' } },
+          { id: 'br_subjects', component: 'Text', variant: 'caption', text: { path: 'subjectsLabel' } },
+          { id: 'br_detail_btn', component: 'Button', variant: 'outline', child: 'br_detail_label', action: { event: { name: 'viewBookDetails', context: { bookKey: { path: 'id' } } } } },
+          { id: 'br_detail_label', component: 'Text', text: 'View Details' },
+        ],
+      },
+    },
+    updateData(surfaceId, '/books', rows),
+  ];
+}
+
+export function bookDetailSurface(surfaceId: string, book: BookDetail): Envelope[] {
+  const authorsLabel = book.authors.join(', ') || 'Unknown author';
+  const publishersLabel = book.publishers?.join(', ') || '';
+  const isbnLabel = book.isbn13?.[0] || book.isbn10?.[0] || '';
+  const pagesLabel = book.pages ? `${book.pages} pages` : '';
+  const subjectsLabel = book.subjects?.slice(0, 5).join(' · ') ?? '';
+
+  const data = {
+    ...book,
+    authorsLabel,
+    publishersLabel,
+    isbnLabel,
+    pagesLabel,
+    subjectsLabel,
+  };
+
+  const descriptionChildren: string[] = data.description ? ['desc_label', 'desc'] : [];
+
+  return [
+    createSurface(surfaceId, 'Book Details', '#f25011'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', gap: 14, children: ['head', 'hero', 'meta', 'info'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: 'Book Details' },
+          { id: 'hero', component: 'Row', gap: 16, children: ['bd_cover', 'bd_meta'] },
+          { id: 'bd_cover', component: 'Image', url: { path: 'coverUrl' }, height: 200 },
+          { id: 'bd_meta', component: 'Column', weight: 1, gap: 6, children: ['bd_title', 'bd_authors', 'bd_publishers', 'bd_pages', 'bd_isbn', 'bd_subjects'] },
+          { id: 'bd_title', component: 'Text', variant: 'h3', text: { path: 'title' } },
+          { id: 'bd_authors', component: 'Text', variant: 'body', text: { path: 'authorsLabel' } },
+          { id: 'bd_publishers', component: 'Text', variant: 'caption', text: { path: 'publishersLabel' } },
+          { id: 'bd_pages', component: 'Text', variant: 'caption', text: { path: 'pagesLabel' } },
+          { id: 'bd_isbn', component: 'Text', variant: 'caption', text: { path: 'isbnLabel' } },
+          { id: 'bd_subjects', component: 'Text', variant: 'caption', text: { path: 'subjectsLabel' } },
+          { id: 'meta', component: 'Column', gap: 6, children: descriptionChildren },
+          ...(data.description
+            ? [
+                { id: 'desc_label', component: 'Text' as const, variant: 'h4', text: 'Description' },
+                { id: 'desc', component: 'Text' as const, variant: 'body', text: { path: 'description' } },
+              ]
+            : []),
+        ],
+      },
+    },
+    updateData(surfaceId, '/', data),
+  ];
+}
+
+/* ---------------- Movies (TMDB) surfaces ---------------- */
+
+export function moviesSurface(surfaceId: string, movies: MovieOption[]): Envelope[] {
+  const rows = movies.map((m) => ({
+    ...m,
+    posterUrl: m.posterPath ? `https://image.tmdb.org/t/p/w342${m.posterPath}` : '',
+    ratingLabel: typeof m.rating === 'number' ? `⭐ ${m.rating.toFixed(1)}` : '',
+    yearLabel: m.releaseDate ? m.releaseDate.slice(0, 4) : '',
+  }));
+
+  return [
+    createSurface(surfaceId, 'Movies', '#e50914'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', gap: 12, children: ['head', 'subhead', 'list'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: 'Movies' },
+          { id: 'subhead', component: 'Text', variant: 'caption', text: 'Search results from TMDB.' },
+          { id: 'list', component: 'List', children: { path: '/movies', componentId: 'movie_row' } },
+
+          { id: 'movie_row', component: 'Row', gap: 16, align: 'center', children: ['mr_poster', 'mr_body'] },
+          { id: 'mr_poster', component: 'Image', url: { path: 'posterUrl' }, height: 150 },
+          { id: 'mr_body', component: 'Column', weight: 1, gap: 6, children: ['mr_title', 'mr_year', 'mr_rating', 'mr_overview', 'mr_detail_btn'] },
+          { id: 'mr_title', component: 'Text', variant: 'h3', text: { path: 'title' } },
+          { id: 'mr_year', component: 'Text', variant: 'caption', text: { path: 'yearLabel' } },
+          { id: 'mr_rating', component: 'Text', variant: 'caption', text: { path: 'ratingLabel' } },
+          { id: 'mr_overview', component: 'Text', variant: 'body', text: { path: 'overview' } },
+          { id: 'mr_detail_btn', component: 'Button', variant: 'outline', child: 'mr_detail_label', action: { event: { name: 'viewMovieDetails', context: { movieId: { path: 'id' } } } } },
+          { id: 'mr_detail_label', component: 'Text', text: 'View Details' },
+        ],
+      },
+    },
+    updateData(surfaceId, '/movies', rows),
+  ];
+}
+
+export function movieDetailSurface(surfaceId: string, movie: MovieDetail): Envelope[] {
+  const genresLabel = movie.genres.join(', ') || '';
+  const runtimeLabel = movie.runtime ? `${movie.runtime} min` : '';
+  const ratingLabel = typeof movie.rating === 'number' ? `⭐ ${movie.rating.toFixed(1)}` : '';
+  const yearLabel = movie.releaseDate ? movie.releaseDate.slice(0, 4) : '';
+
+  const data = {
+    ...movie,
+    genresLabel,
+    runtimeLabel,
+    ratingLabel,
+    yearLabel,
+  };
+
+  const metaChildren: string[] = [];
+  if (yearLabel) metaChildren.push('md_year');
+  if (runtimeLabel) metaChildren.push('md_runtime');
+  if (ratingLabel) metaChildren.push('md_rating');
+  if (genresLabel) metaChildren.push('md_genres');
+  if (movie.tagline) metaChildren.push('md_tagline');
+
+  return [
+    createSurface(surfaceId, 'Movie Details', '#e50914'),
+    {
+      version: A2UI_VERSION,
+      updateComponents: {
+        surfaceId,
+        components: [
+          { id: 'root', component: 'Card', child: 'body' },
+          { id: 'body', component: 'Column', gap: 14, children: ['head', 'hero', 'meta', 'info'] },
+          { id: 'head', component: 'Text', variant: 'h2', text: 'Movie Details' },
+          { id: 'hero', component: 'Row', gap: 16, children: ['md_poster', 'md_meta'] },
+          { id: 'md_poster', component: 'Image', url: { path: 'posterUrl' }, height: 240 },
+          { id: 'md_meta', component: 'Column', weight: 1, gap: 6, children: ['md_title', ...metaChildren] },
+          { id: 'md_title', component: 'Text', variant: 'h3', text: { path: 'title' } },
+          ...(yearLabel ? [{ id: 'md_year', component: 'Text' as const, variant: 'caption', text: { path: 'yearLabel' } }] : []),
+          ...(runtimeLabel ? [{ id: 'md_runtime', component: 'Text' as const, variant: 'caption', text: { path: 'runtimeLabel' } }] : []),
+          ...(ratingLabel ? [{ id: 'md_rating', component: 'Text' as const, variant: 'caption', text: { path: 'ratingLabel' } }] : []),
+          ...(genresLabel ? [{ id: 'md_genres', component: 'Text' as const, variant: 'caption', text: { path: 'genresLabel' } }] : []),
+          ...(movie.tagline ? [{ id: 'md_tagline', component: 'Text' as const, variant: 'body', text: { path: 'tagline' } }] : []),
+          { id: 'info', component: 'Column', gap: 6, children: movie.overview ? ['overview_label', 'overview'] : [] },
+          ...(movie.overview
+            ? [
+                { id: 'overview_label', component: 'Text' as const, variant: 'h4', text: 'Overview' },
+                { id: 'overview', component: 'Text' as const, variant: 'body', text: { path: 'overview' } },
+              ]
+            : []),
         ],
       },
     },
