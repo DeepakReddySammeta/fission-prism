@@ -19,10 +19,13 @@ const MAX_LIVE_STREAMS = 4;
 export interface Intent {
   destination: string;
   origin?: string;
-  /** The backend's own classification of the request — used by the sidebar
-   * to light up the matching "app". 'refine' also covers finance / my-records
-   * / appointments replies, which carry no distinguishing agent of their own. */
+  /** The backend's own classification of the request. 'refine' covers every
+   * reply that renders no screen of its own — a clarifying question, or a
+   * request this app has no flow for. */
   intent?: 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'find_doctor' | 'explore_destinations' | 'check_weather';
+  /** Which sidebar app answered, straight from the router's own tool choice
+   * — the sidebar reads this instead of keyword-matching the query. */
+  app?: 'trip' | 'health' | 'finance' | null;
   agents: Array<'flights' | 'hotels' | 'health'>;
   summary?: string;
   /** True when the query used booking language ("book...") — the combined
@@ -46,6 +49,13 @@ export interface Turn {
   query: string;
   intent: Intent | null;
   loading: boolean;
+  /** The progress lines the backend has reported so far ("Searching
+   * flights…", "Found 6 hotels."), newest last — shown in place of a static
+   * "Thinking…" while the turn's agents work, and cleared when it finishes.
+   * A list rather than one replaced line because agents run concurrently:
+   * three of them overwriting a single line reads as a flicker, whereas the
+   * same three appended read as progress. */
+  steps?: string[];
   runtime: A2uiRuntime;
 }
 
@@ -149,18 +159,42 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     updateTurn(id, { sessionId: sid, intent: parsedIntent });
     upsertRecent(conversationId, q, parsedIntent?.destination);
 
-    // A clarification reply ("which city did you mean?") has no agents to
-    // wait on — its whole answer is the summary, already shown. Clear the
-    // loading state now so no skeleton lingers; any surface that does still
-    // stream (finance/records replies) clears it again harmlessly below.
-    if (!parsedIntent?.agents?.length) updateTurn(id, { loading: false });
-
     const es = new EventSource(`${API}/api/events/${sid}`);
     trackStream(id, es);
     es.addEventListener('a2ui', (e: MessageEvent) => {
       runtime.processMessages([JSON.parse(e.data)]);
-      updateTurn(id, { loading: false });
     });
+    // Progress lines while the agents work, plus the backend's own "nothing
+    // more is coming" signal. That signal — not the first surface to arrive —
+    // is what ends the thinking indicator, so a trip expecting both flights
+    // and hotels keeps it up until both have landed, and a turn that renders
+    // nothing at all (a clarification, an empty list) still stops waiting.
+    es.addEventListener('status', (e: MessageEvent) => {
+      const { text, done } = JSON.parse(e.data) as { text?: string; done?: boolean };
+      if (done) { updateTurn(id, { loading: false, steps: undefined }); return; }
+      if (!text) return;
+      // Concurrent agents each reach the same layout step, so the same line
+      // arrives more than once — collapse a repeat of whatever is already on
+      // the bottom rather than stuttering it.
+      setConversations((prev) => prev.map((c) => (
+        c.turns.some((t) => t.id === id)
+          ? {
+              ...c,
+              turns: c.turns.map((t) => {
+                if (t.id !== id) return t;
+                const steps = t.steps ?? [];
+                return steps[steps.length - 1] === text
+                  ? { ...t, loading: true }
+                  : { ...t, loading: true, steps: [...steps, text] };
+              }),
+            }
+          : c
+      )));
+    });
+    // A dropped stream must not leave the indicator spinning forever. Any
+    // surfaces already rendered stay; a reconnect that still has work in
+    // flight will send its own status/done and pick the indicator back up.
+    es.addEventListener('error', () => updateTurn(id, { loading: false, steps: undefined }));
   }, [activeId, updateTurn, token, trackStream]);
 
   // "+ New chat" — the current conversation (if it actually has anything in

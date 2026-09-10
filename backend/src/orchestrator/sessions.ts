@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Envelope, HotelOption, TripSummary } from '../types';
+import type { Envelope, HotelOption, ParsedIntent, TripSummary } from '../types';
 import type { FastifyReply } from 'fastify';
 import { validateEnvelope } from './trust';
 
@@ -153,8 +153,10 @@ export interface Session {
   savedPlanId?: string;
   hotelsCache: Map<string, any>;
   flightsCache: Map<string, any>;
-  pendingIntent?: unknown;
+  pendingIntent?: ParsedIntent;
   started?: boolean;
+  /** How many async chains this turn still has running — see beginWork. */
+  inFlight: number;
   /** Set when this session was created from a "give me the details of X
    * hotel" style query that resolved to an already-known hotel — runAgents
    * jumps straight to that hotel's room view instead of running the normal
@@ -225,7 +227,7 @@ const sessions = new Map<string, Session>();
 export function createSession(): Session {
   const id = randomUUID();
   const session: Session = {
-    id, trip: { destination: '' }, subscribers: new Set(),
+    id, trip: { destination: '' }, subscribers: new Set(), inFlight: 0,
     hotelsCache: new Map(), flightsCache: new Map(), doctorsCache: new Map(),
     wire: { created: new Set(), components: new Map() },
   };
@@ -289,6 +291,44 @@ function reduceForWire(s: Session, e: Envelope): Envelope | null {
   return e;
 }
 
+/** Writes one named SSE frame to every client on this session. */
+function send(s: Session, event: string, data: unknown) {
+  const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of s.subscribers) {
+    try { res.raw.write(frame); } catch { s.subscribers.delete(res); }
+  }
+}
+
+/** A progress line for the chat's thinking indicator ("Searching flights…",
+ * "Found 6 doctors"). Not an A2UI envelope, so it skips the validation and
+ * wire-diffing the a2ui frames go through — it renders as text, never as UI. */
+export function emitStatus(id: string, text: string) {
+  const s = sessions.get(id);
+  if (s) send(s, 'status', { text });
+}
+
+/**
+ * Ref-counts the async work one turn kicked off. The client's thinking
+ * indicator ends when the LAST agent finishes rather than the first, and
+ * still ends for work that produced nothing to render (an empty list, a
+ * weather lookup that failed, a layout that couldn't be generated) — which
+ * a "clear it when the first surface arrives" rule gets wrong in both
+ * directions. Every async chain a turn starts wraps itself in this pair,
+ * including the synchronous dispatch that starts them, so the count can't
+ * hit zero midway through.
+ */
+export function beginWork(id: string) {
+  const s = sessions.get(id);
+  if (s) s.inFlight += 1;
+}
+
+export function endWork(id: string) {
+  const s = sessions.get(id);
+  if (!s) return;
+  s.inFlight -= 1;
+  if (s.inFlight <= 0) send(s, 'status', { done: true });
+}
+
 /** Validates, then broadcasts an envelope to every SSE client on this session. */
 export function emit(id: string, envelope: Envelope) {
   const s = sessions.get(id);
@@ -299,10 +339,7 @@ export function emit(id: string, envelope: Envelope) {
   }
   const reduced = reduceForWire(s, envelope);
   if (!reduced) return;
-  const frame = `event: a2ui\ndata: ${JSON.stringify(reduced)}\n\n`;
-  for (const res of s.subscribers) {
-    try { res.raw.write(frame); } catch { s.subscribers.delete(res); }
-  }
+  send(s, 'a2ui', reduced);
 }
 
 export function emitAll(id: string, envelopes: Envelope[]) {

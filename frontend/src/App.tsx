@@ -190,17 +190,14 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
         // A genuinely new chat exchange — a real user message, then a real
         // assistant response below it — not the same card silently swapping
         // its own content. Reuses the exact "show me details of my X" flow a
-        // typed query already goes through (see intent.ts), so this needs no
-        // action/session round trip of its own.
+        // typed query already goes through, so this needs no action/session
+        // round trip of its own.
         const records: any[] = surfaceData(runtime.getSurface('records'), '/records') || [];
         const record = records.find((r) => String(r.id) === String(action.context.recordId));
-        // The trailing "plan" is deliberate, not decorative — the backend's
-        // my-records detector requires a recognized noun (plan/trip/
-        // booking/...) to even recognize this as a records query at all,
-        // and a free-text title like "Manali Escape" won't necessarily
-        // contain one. "plan" specifically (not "trip"/"booking") also keeps
-        // its search pool unfiltered by booking status, so this still finds
-        // an unbooked saved plan by the same name.
+        // The trailing "plan" keeps a free-text title like "Manali Escape"
+        // reading as a saved-plan reference, and "plan" specifically (not
+        // "booking") keeps the search pool unfiltered by booking status, so
+        // this still finds an unbooked saved plan by the same name.
         if (record) plan(`Show me details of my ${record.title} plan`);
         return;
       }
@@ -225,10 +222,9 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
       if (action.name === 'viewDoctorProfile' || action.name === 'startDoctorBooking') {
         // Same client-side-synthesis pattern as exploreDestination above —
         // a genuinely new chat turn, not this same list card silently
-        // swapping to a profile card in place. The two fixed phrasings here
-        // are matched exactly by detectDoctorLookup on the backend (see
-        // that function's own comment) — never natural language a person
-        // actually types, so there's no ambiguity to resolve.
+        // swapping to a profile card in place. Both phrasings route to the
+        // backend's doctor_lookup tool, the same one a typed "who is Dr X"
+        // lands on.
         const name = String(action.context.name || '').trim();
         if (name) plan(action.name === 'startDoctorBooking' ? `Book an appointment with ${name}` : `View profile for ${name}`);
         return;
@@ -236,11 +232,10 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
       if (action.name === 'selectHotel') {
         // Same fresh-turn pattern as viewDoctorProfile above — a real new
         // exchange, not this grid card swapping to a rooms card in place.
-        // The exact "View rooms at <name>" phrasing is matched by
-        // detectHotelRoomsLookup on the backend (before the LLM, so the
-        // hotel name is never read as a destination); it jumps straight to
-        // that hotel's rooms with no "← Back to hotels" button, since a
-        // fresh turn has no list above it to go back to.
+        // "View rooms at <name>" routes to the backend's hotel_rooms tool,
+        // which jumps straight to that hotel's rooms with no "← Back to
+        // hotels" button, since a fresh turn has no list above it to go
+        // back to.
         const hotels: any[] = surfaceData(runtime.getSurface('hotels'), '/hotels') || [];
         const hotel = hotels.find((h) => String(h.id) === String(action.context.hotelId));
         if (hotel?.name) plan(`View rooms at ${hotel.name}`);
@@ -454,15 +449,26 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
     <>
       <div className="chat-msg-user reveal">{turn.query}</div>
 
-      {intent?.summary ? (
+      {(intent?.summary || loading) ? (
         <div className="chat-msg-ai reveal">
           <span className="chat-ai-avatar" aria-hidden><PrismMark size={20} /></span>
-          <p>{intent.summary}</p>
-        </div>
-      ) : loading ? (
-        <div className="chat-msg-ai reveal">
-          <span className="chat-ai-avatar" aria-hidden><PrismMark size={20} /></span>
-          <p className="chat-thinking">Thinking…</p>
+          <div className="chat-ai-stack">
+            {intent?.summary ? <p>{intent.summary}</p> : null}
+            {/* Live progress under the summary while the agents work — the
+                steps the backend actually reported, newest last, capped to
+                the last three so a busy trip doesn't grow a wall of text.
+                aria-live so it's announced, not only seen. */}
+            {loading ? (
+              <div className="chat-progress" aria-live="polite">
+                {(turn.steps?.length ? turn.steps : ['Thinking…']).slice(-3).map((step, i, shown) => (
+                  <span key={step} className={`chat-progress-step${i === shown.length - 1 ? ' is-active' : ''}`}>
+                    <span className="chat-progress-dot" aria-hidden />
+                    {step}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       ) : null}
 

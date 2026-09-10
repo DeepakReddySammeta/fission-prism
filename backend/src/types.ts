@@ -94,27 +94,23 @@ export interface ParsedIntent {
   destination: string;
   durationNights?: number;
   agents: Array<'flights' | 'hotels' | 'health'>;
-  /** free-text constraint carried over from a refinement message, e.g. "cheaper", "5-star only" */
-  refinement?: string;
-  /** best-effort ISO dates (YYYY-MM-DD) extracted from the query, if present */
+  /** Which sidebar "app" the tool that answered belongs to — set by
+   * /api/plan from the router's own choice, so the client never has to
+   * re-classify the raw query to light up the right row. */
+  app?: 'trip' | 'health' | 'finance' | null;
+  /** ISO dates (YYYY-MM-DD) the router extracted from the query, if present */
   checkIn?: string;
   checkOut?: string;
-  /** Set when no destination phrase was found but the message looks like it
-   * might be naming a specific hotel (e.g. "give me the details of sunset
-   * bay hotel"). The server tries to resolve this against hotels already
-   * shown earlier in this run before falling back to asking for a city. */
-  hotelNameQuery?: string;
   /** Best-effort clock time ("HH:MM", 24h) extracted when the user gave a
    * time for booking a flight (e.g. "book a flight at 10am"). Drives
    * auto-picking one flight from the results instead of just listing them. */
   flightTargetTime?: string;
   /** Free text naming a specific flight/airline to book (e.g. "book the
-   * IndiGo flight", "book flight 6E-203"), matched against results the same
-   * best-effort way `hotelNameQuery` matches hotel names. */
+   * IndiGo flight", "book flight 6E-203"), matched best-effort against the
+   * results the flights agent returns. */
   flightQuery?: string;
-  /** Free text naming a specific hotel to book within a full plan_trip flow
-   * (as opposed to `hotelNameQuery`, which only resolves a standalone
-   * hotel-only message with no destination at all). */
+  /** Free text naming a specific hotel to pick out of a plan_trip's hotel
+   * results, matched the same best-effort way. */
   hotelQuery?: string;
   /** True when the message uses booking language ("book", "reserve") rather
    * than just browsing ("show me", "plan a trip"). Drives auto-picking one
