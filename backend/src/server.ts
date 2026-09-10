@@ -7,26 +7,22 @@ import cors from '@fastify/cors';
 import { OAuth2Client } from 'google-auth-library';
 import type { ActionPayload, Envelope, FlightOption, HotelOption, ParsedIntent, RoomOption, TripSummary } from './types';
 import { PORT, LLM_ENABLED, LLM_MODEL, LLM_PROVIDER, GOOGLE_CLIENT_ID, CORS_ORIGINS } from './config';
-import {
-  parseIntent, detectMyRecordsIntent, detectExplorationIntent, detectAppointmentsQuery,
-  detectWeatherIntent,
-  type MyRecordsIntent, type AppointmentsQuery,
-} from './agents/intent';
+import { routeQuery, APP_OF, type Route, type MyRecordsIntent, type AppointmentsQuery } from './agents/router';
 import { getFlightOptions } from './agents/flights';
 import { getHotelOptions } from './agents/hotels';
 import { getDestinationSuggestions } from './agents/destinations';
 import { pickRecommendedFlight, pickRecommendedHotel, pickRecommendedRoom } from './agents/recommend';
-import { getDoctorMatches, normalizeSpecialty, findDoctorByName, detectDoctorLookup, type DoctorMatch } from './agents/health';
-import { detectFinanceQuery, type FinanceQuery } from './agents/finance';
+import { getDoctorMatches, normalizeSpecialty, findDoctorByName, type DoctorMatch } from './agents/health';
+import { type FinanceQuery } from './agents/finance';
 import { getDoctorById } from './mock/doctors';
 import {
-  createSession, getSession, subscribe, unsubscribe, emit, emitAll,
+  createSession, getSession, subscribe, unsubscribe, emit, emitAll, emitStatus, beginWork, endWork,
   type Session,
   type PendingMyRecords, type PlanRecordSummary, type PendingAppointments, type AppointmentSummary,
   type PendingFinance, type CategoryStatus, type GoalSummary, type GoalPlanItem,
   type CashFlowPoint, type RecentExpenseRow,
 } from './orchestrator/sessions';
-import { indexHotels, findHotelByName, detectHotelRoomsLookup } from './orchestrator/hotelIndex';
+import { indexHotels, findHotelByName } from './orchestrator/hotelIndex';
 import {
   flightsSurface, hotelsSurface, roomsSurface, tripSummarySurface, myRecordsSurface, recordDetailSurface,
   destinationsSurface, doctorsSurface, doctorProfileSurface, doctorBookingFormSurface, appointmentConfirmationSurface,
@@ -59,7 +55,14 @@ const GOALS = {
  * file. Not used by emitFinance's branches: those share one `built?.then(...)`
  * across the whole if/else chain instead of firing per-branch. */
 function emitSurface(sessionId: string, key: string, goal: string, dataSource: () => Envelope[]): void {
-  buildSurface(key, goal, dataSource).then((envs) => emitAll(sessionId, envs));
+  beginWork(sessionId);
+  // Named after the surface, not a generic "working…": several agents lay
+  // out their screens at the same time, and three identical progress lines
+  // tell the traveller nothing about what is actually still running.
+  emitStatus(sessionId, `Laying out the ${key.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase()} screen…`);
+  buildSurface(key, goal, dataSource)
+    .then((envs) => emitAll(sessionId, envs))
+    .finally(() => endWork(sessionId));
 }
 
 const app = Fastify({ logger: false });
@@ -98,173 +101,134 @@ app.get<{ Querystring: { place?: string } }>('/api/weather', async (req, reply) 
   }
 });
 
-/** Step 1: parse intent, create a session, store what needs generating.
- *  Generation itself only starts once the client subscribes to /api/events
+/** What /api/plan answers with: the session to subscribe to for the rendered
+ * screen, plus the intent the client reads its summary line, cross-sells and
+ * active sidebar app from. */
+interface PlanResponse { sessionId: string; intent: ParsedIntent }
+
+/** A turn that renders nothing but a sentence — the router asking for a city
+ * it needs, or declining something this app has no flow for. */
+function refine(summary: string): PlanResponse {
+  return { sessionId: createSession().id, intent: { intent: 'refine' as const, destination: '', agents: [], summary } };
+}
+
+/** Step 1: one LLM call decides which tool the message wants (see
+ *  agents/router.ts), and this dispatches it. There is no keyword matching in
+ *  front of it and no ordering between domains — the model classifies, this
+ *  switch runs what it picked.
+ *
+ *  Rendering itself only starts once the client subscribes to /api/events
  *  (see below) so we never race an agent finishing before anyone's listening. */
 app.post<{ Body: { query: string } }>('/api/plan', { preHandler: optionalAuth }, async (req, reply) => {
   const { query } = req.body;
   if (!query?.trim()) return reply.code(400).send({ error: 'query is required' });
 
-  // "I earn 60000, rent is 20000..." / "spent 500 on groceries" / "save
-  // 50000 for a laptop" / "how can I plan saving 1 lakh for my bike" / "how
-  // much have I spent this month" — the personal finance agent. Checked
-  // FIRST, ahead of detectMyRecordsIntent below: "plan" is that function's
-  // own trigger noun for a saved travel plan, so a finance sentence that
-  // happens to use the ordinary English verb "plan" ("how can I plan
-  // saving...") was being misread as "show me my saved trip plans" before
-  // finance ever got a chance to look at it. Finance's own vocabulary
-  // (goal/save/budget/income/...) essentially never collides with a real
-  // "show my trips" request, so checking it first costs nothing there.
-  const financeQuery = detectFinanceQuery(query);
-  if (financeQuery) return handleFinanceQuery(financeQuery, req.user);
-
-  // "My plans" / "my upcoming bookings" / "details of my kerala trip" —
-  // answered right here in the chat (a records list, or one specific plan's
-  // full summary) instead of navigating to /plans or /bookings. No LLM call
-  // either way — this is a fast, deterministic classifier (see intent.ts).
-  const myRecords = detectMyRecordsIntent(query);
-  if (myRecords) return handleMyRecordsQuery(myRecords, req.user);
-
-  // "My upcoming appointments" / "appointments today" / "past appointments
-  // with Dr. Rao" — checked before detectDoctorLookup below: "appointment
-  // with Dr. Rao" would otherwise match that function's own "mentions a
-  // doctor" heuristic and get misread as a request to view Dr. Rao's
-  // profile instead of the actual booked appointment.
-  const appointmentsQuery = detectAppointmentsQuery(query);
-  if (appointmentsQuery) return handleAppointmentsQuery(appointmentsQuery, req.user);
-
-  // "What's the weather in Hyderabad" / "show me weather in Goa" / "Delhi
-  // weather" — a live third-party reading, not a flights/hotels search.
-  // Checked before parseIntent (same reasoning as the detectors above): a
-  // bare weather question names no origin/destination the trip prompt
-  // understands, so without this it falls through to "which city did you
-  // mean?". No agents — rendering is deferred to pendingWeather/runWeather,
-  // same as every other agent-backed response (see pendingExploration).
-  const weatherQuery = detectWeatherIntent(query);
-  if (weatherQuery) {
-    const session = createSession();
-    session.trip.destination = weatherQuery.place;
-    session.pendingWeather = { place: weatherQuery.place };
-    return {
-      sessionId: session.id,
-      intent: {
-        intent: 'check_weather', destination: weatherQuery.place, agents: [],
-        summary: `Here's the current weather in ${weatherQuery.place}.`,
-      },
-    };
-  }
-
-  // "Best places to visit in X" / "where should I go" — inspiration, not a
-  // flights/hotels search. Checked before parseIntent for the same reason
-  // detectMyRecordsIntent is: a different kind of request, and a fast
-  // deterministic check here avoids the main prompt ever having to parse
-  // "India in monsoon" as if it were a literal destination string.
-  const exploration = detectExplorationIntent(query);
-  if (exploration) {
-    const session = createSession();
-    session.pendingExploration = exploration;
-    session.trip.destination = exploration.region;
-    const seasonPhrase = exploration.season ? ` for ${exploration.season.toLowerCase()}` : '';
-    return {
-      sessionId: session.id,
-      intent: {
-        intent: 'explore_destinations', destination: exploration.region, agents: [],
-        summary: `Here are some great places to consider in ${exploration.region}${seasonPhrase} — explore one further, or schedule a trip whenever you're ready.`,
-      },
-    };
-  }
-
-  // "View profile for Dr. X" / "Book an appointment with Dr. X" — the two
-  // fixed templates App.tsx synthesizes for the doctor list's buttons (see
-  // detectDoctorLookup's own comment). A direct lookup, not a search, so no
-  // LLM call — same reasoning as the two checks above.
-  const doctorLookup = detectDoctorLookup(query);
-  if (doctorLookup) {
-    const doctor = findDoctorByName(doctorLookup.doctorName);
-    const session = createSession();
-    if (!doctor) {
-      return {
-        sessionId: session.id,
-        intent: { intent: 'refine', destination: '', agents: [], summary: `I couldn't find ${doctorLookup.doctorName} — they may not be listed anymore.` },
-      };
-    }
-    session.pendingDoctorLookup = doctor;
-    session.pendingDoctorView = doctorLookup.kind === 'book' ? 'book' : 'overview';
-    session.pendingDoctorHints = doctorLookup.hints;
-    return {
-      sessionId: session.id,
-      intent: {
-        intent: 'find_doctor', destination: '', agents: [],
-        summary: doctorLookup.kind === 'book'
-          ? `Here's the booking form for ${doctor.name}.`
-          : `Here's ${doctor.name}'s full profile.`,
-      },
-    };
-  }
-
-  // "View rooms at <hotel>" — the fixed template the hotel grid's button
-  // synthesizes (see detectHotelRoomsLookup). A direct jump to that hotel's
-  // rooms as a fresh chat turn, not a search — no LLM, same as the checks
-  // above. The rooms card renders with no "← Back to hotels" button, since
-  // there's no list in this turn to go back to.
-  const hotelRooms = detectHotelRoomsLookup(query);
-  if (hotelRooms) {
-    const match = findHotelByName(hotelRooms.hotelName);
-    const session = createSession();
-    if (!match) {
-      return {
-        sessionId: session.id,
-        intent: {
-          intent: 'refine', destination: '', agents: [],
-          summary: `I can't find ${hotelRooms.hotelName} anymore — search for hotels again and I'll pull up its rooms.`,
-        },
-      };
-    }
-    session.directHotel = match.hotel;
-    session.trip.destination = match.destination;
-    // Deliberately intent:'refine' / agents:[] — not 'browse_hotels' — so the
-    // turn is *only* this hotel's rooms card: no weather report, no "flying
-    // in? add flights" cross-sell, none of the trip-planning scaffolding a
-    // real hotels search pulls in. runAgents still fires (it keys off
-    // session.directHotel, not the agents list) and renders roomsSurface.
-    session.pendingIntent = {
-      intent: 'refine', destination: '', agents: [],
-      summary: `Here are the rooms at ${match.hotel.name}, in ${titleCase(match.destination)}.`,
-    };
-    return { sessionId: session.id, intent: session.pendingIntent };
-  }
-
-  let intent = await parseIntent(query);
-  const session = createSession();
-
-  // No destination was named, but the message looked like it might be
-  // naming a specific hotel — if it matches one already shown earlier in
-  // this run, skip the clarification and jump straight to that hotel's
-  // rooms instead.
-  if (!intent.destination && intent.hotelNameQuery) {
-    const match = findHotelByName(intent.hotelNameQuery);
-    if (match) {
-      session.directHotel = match.hotel;
-      intent = {
-        ...intent,
-        destination: match.destination,
-        agents: ['hotels'],
-        summary: `Here's ${match.hotel.name}, in ${titleCase(match.destination)} — take a look.`,
-      };
-    }
-  }
-
-  session.trip.destination = intent.destination;
-  session.trip.origin = intent.origin;
-  session.trip.nights = intent.durationNights;
-  session.trip.checkIn = intent.checkIn;
-  session.trip.checkOut = intent.checkOut;
-  session.trip.adults = intent.adults;
-  session.trip.children = intent.children;
-  session.pendingIntent = intent;
-
-  return { sessionId: session.id, intent };
+  const route = await routeQuery(query);
+  const { sessionId, intent } = dispatch(route, req.user);
+  // Which sidebar app lit up is decided here, where the tool that ran is
+  // known — not re-derived from the raw query on the client.
+  return { sessionId, intent: { ...intent, app: APP_OF[route.tool] } };
 });
+
+function dispatch(route: Route, user: AuthUser | undefined): PlanResponse {
+  switch (route.tool) {
+    // These three both read and write the user's own records, so they run
+    // synchronously here; only their rendering is deferred.
+    case 'finance':
+      return handleFinanceQuery(route.finance, user);
+    case 'my_records':
+      return handleMyRecordsQuery(route.my_records, user);
+    case 'appointments':
+      return handleAppointmentsQuery(route.appointments, user);
+
+    case 'weather': {
+      const session = createSession();
+      session.trip.destination = route.weather.place;
+      session.pendingWeather = route.weather;
+      return {
+        sessionId: session.id,
+        intent: { intent: 'check_weather', destination: route.weather.place, agents: [], summary: route.summary },
+      };
+    }
+
+    case 'destinations': {
+      const session = createSession();
+      session.pendingExploration = route.destinations;
+      session.trip.destination = route.destinations.region;
+      return {
+        sessionId: session.id,
+        intent: { intent: 'explore_destinations', destination: route.destinations.region, agents: [], summary: route.summary },
+      };
+    }
+
+    case 'doctor_lookup': {
+      const { doctorName, view, preferredDate, preferredTime } = route.doctor_lookup;
+      const doctor = findDoctorByName(doctorName);
+      if (!doctor) return refine(`I couldn't find ${doctorName} — they may not be listed anymore.`);
+      const session = createSession();
+      session.pendingDoctorLookup = doctor;
+      session.pendingDoctorView = view === 'book' ? 'book' : 'overview';
+      session.pendingDoctorHints = preferredDate || preferredTime ? { preferredDate, preferredTime } : undefined;
+      return {
+        sessionId: session.id,
+        intent: { intent: 'find_doctor', destination: '', agents: [], summary: route.summary },
+      };
+    }
+
+    case 'hotel_rooms': {
+      const { hotelName } = route.hotel_rooms;
+      const match = findHotelByName(hotelName);
+      if (!match) return refine(`I can't find ${hotelName} anymore — search for hotels again and I'll pull up its rooms.`);
+      const session = createSession();
+      session.directHotel = match.hotel;
+      session.trip.destination = match.destination;
+      // Deliberately intent:'refine' / agents:[] — the turn is *only* this
+      // hotel's rooms card: no weather, no "flying in? add flights"
+      // cross-sell, none of the trip-planning scaffolding a real hotels
+      // search pulls in. runAgents still fires (it keys off directHotel, not
+      // the agents list) and renders roomsSurface.
+      session.pendingIntent = {
+        intent: 'refine', destination: '', agents: [],
+        summary: `Here are the rooms at ${match.hotel.name}, in ${titleCase(match.destination)}.`,
+      };
+      return { sessionId: session.id, intent: session.pendingIntent };
+    }
+
+    case 'doctors': {
+      const session = createSession();
+      const intent: ParsedIntent = {
+        intent: 'find_doctor', destination: '', agents: ['health'], summary: route.summary, ...route.doctors,
+      };
+      session.pendingIntent = intent;
+      return { sessionId: session.id, intent };
+    }
+
+    case 'trip': {
+      const session = createSession();
+      const intent: ParsedIntent = {
+        ...route.trip,
+        // Which agents run follows from the kind of trip request, so the
+        // router never has to state it twice and can't contradict itself.
+        agents: route.trip.intent === 'browse_hotels' ? ['hotels']
+          : route.trip.intent === 'browse_flights' ? ['flights']
+          : ['flights', 'hotels'],
+        summary: route.summary,
+      };
+      session.trip.destination = intent.destination;
+      session.trip.origin = intent.origin;
+      session.trip.nights = intent.durationNights;
+      session.trip.checkIn = intent.checkIn;
+      session.trip.checkOut = intent.checkOut;
+      session.trip.adults = intent.adults;
+      session.trip.children = intent.children;
+      session.pendingIntent = intent;
+      return { sessionId: session.id, intent };
+    }
+
+    default:
+      return refine(route.summary);
+  }
+}
 
 const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
 
@@ -311,6 +275,10 @@ app.get<{ Params: { sessionId: string } }>('/api/events/:sessionId', async (req,
 
   if (!session.started) {
     session.started = true;
+    // Counted like any other chain: if none of the branches below start work
+    // (a clarification, an empty list), this endWork is what tells the client
+    // to stop waiting.
+    beginWork(sessionId);
     if (session.pendingMyRecords) {
       emitMyRecords(sessionId, session.pendingMyRecords);
     } else if (session.pendingAppointments) {
@@ -323,10 +291,10 @@ app.get<{ Params: { sessionId: string } }>('/api/events/:sessionId', async (req,
       runWeather(sessionId, session.pendingWeather);
     } else if (session.pendingDoctorLookup) {
       runDoctorLookup(sessionId, session.pendingDoctorLookup, session.pendingDoctorView, session.pendingDoctorHints);
-    } else {
-      const pending = session.pendingIntent as ParsedIntent | undefined;
-      if (pending) runAgents(sessionId, pending);
+    } else if (session.pendingIntent) {
+      runAgents(sessionId, session.pendingIntent);
     }
+    endWork(sessionId);
   }
 });
 
@@ -454,7 +422,11 @@ function emitFinance(sessionId: string, pending: PendingFinance) {
       () => recentExpensesSurface('finance', pending.expenses),
     );
   }
-  built?.then((envs) => emitAll(sessionId, envs));
+  if (built) {
+    beginWork(sessionId);
+    emitStatus(sessionId, 'Laying out your finance screen…');
+    built.then((envs) => emitAll(sessionId, envs)).finally(() => endWork(sessionId));
+  }
 }
 
 /** Generates and renders the destination suggestions for a chat-asked
@@ -462,14 +434,21 @@ function emitFinance(sessionId: string, pending: PendingFinance) {
  * connects, same as every other agent-backed response in this app. */
 function runExploration(sessionId: string, pending: NonNullable<ReturnType<typeof getSession>>['pendingExploration']) {
   if (!pending) return;
+  beginWork(sessionId);
+  emitStatus(sessionId, `Finding places to visit in ${pending.region}…`);
   getDestinationSuggestions(pending.region, pending.season).then(({ destinations, source }) => {
     if (!getSession(sessionId)) return;
-    buildSurface(
+    emitStatus(sessionId, `Found ${destinations.length} place${destinations.length === 1 ? '' : 's'} to consider.`);
+    // emitSurface, not a bare buildSurface — it counts its own layout build,
+    // so the turn isn't reported finished while the screen is still being
+    // generated.
+    emitSurface(
+      sessionId,
       'destinations',
       `Show destination suggestions for a trip to ${pending.region}${pending.season ? ` in ${pending.season}` : ''}: name, why it fits, a photo if available. Available action: exploreDestination, context { name }; also scheduleTrip, context { region, durationNights } to start planning.`,
       () => destinationsSurface('destinations', pending.region, pending.season, pending.durationNights, destinations),
-    ).then((envs) => emitAll(sessionId, envs));
-  });
+    );
+  }).finally(() => endWork(sessionId));
 }
 
 /** Renders live weather for a chat-asked "what's the weather in X" query, or
@@ -479,10 +458,12 @@ function runExploration(sessionId: string, pending: NonNullable<ReturnType<typeo
  * emitMyRecords/emitAppointments on an empty result. */
 function runWeather(sessionId: string, pending: { place: string } | undefined) {
   if (!pending) return;
+  beginWork(sessionId);
+  emitStatus(sessionId, `Checking the weather in ${pending.place}…`);
   loadWeather(pending.place).then((reading) => {
     if (!reading || !getSession(sessionId)) return;
     emitSurface(sessionId, 'weather', GOALS.weather, () => weatherSurface('weather', reading));
-  }).catch(() => {});
+  }).catch(() => {}).finally(() => endWork(sessionId));
 }
 
 /** Renders the profile+booking card for a "View profile for Dr. X"/"Book an
@@ -497,6 +478,7 @@ function runDoctorLookup(
   if (!session) return;
   session.doctorsCache = new Map([[doctor.id, doctor]]);
   session.activeDoctorId = doctor.id;
+  emitStatus(sessionId, view === 'book' ? `Opening the booking form for ${doctor.name}…` : `Pulling up ${doctor.name}'s profile…`);
   if (view === 'book') {
     emitSurface(sessionId, 'doctorBookingForm',
       'The patient picked a doctor and now has to book an appointment. Collect the patient details the booking needs and let them confirm. The confirm button must not work until name, phone, date and time are filled in. Available action: confirmAppointment, context { doctorId, patientName, patientAge, patientGender, patientPhone, patientEmail, reason, preferredDate, preferredTime }.',
@@ -585,7 +567,7 @@ function hydrateSessionFromTrip(session: NonNullable<ReturnType<typeof getSessio
  * bookings" query — building the actual A2UI content happens later, once
  * the SSE stream connects (see emitMyRecords), matching how every other
  * query defers generation until someone's actually listening. */
-function handleMyRecordsQuery(myRecords: MyRecordsIntent, user: AuthUser | undefined) {
+function handleMyRecordsQuery(myRecords: MyRecordsIntent, user: AuthUser | undefined): PlanResponse {
   const session = createSession();
   const label = myRecords.recordType === 'bookings' ? 'bookings' : 'plans';
   const filterLabel = myRecords.filter === 'all' ? '' : `${myRecords.filter} `;
@@ -686,7 +668,7 @@ function filterAppointmentsByReference(appointments: AppointmentSummary[], refer
 /** Everything /api/plan needs to do for a chat-asked "my appointments"
  * query — mirrors handleMyRecordsQuery; actual A2UI content is built once
  * the SSE stream connects (see emitAppointments). */
-function handleAppointmentsQuery(query: AppointmentsQuery, user: AuthUser | undefined) {
+function handleAppointmentsQuery(query: AppointmentsQuery, user: AuthUser | undefined): PlanResponse {
   const session = createSession();
 
   if (query.kind === 'unsupported') {
@@ -1041,7 +1023,7 @@ function getRecentExpenses(userId: string, limit = 8): RecentExpenseRow[] {
  * call (setting a budget, logging a spend, updating a goal are all direct
  * database writes, not just a lookup) — safe to do synchronously since
  * better-sqlite3 is sync, same as confirmAppointment's insert. */
-function handleFinanceQuery(query: FinanceQuery, user: AuthUser | undefined) {
+function handleFinanceQuery(query: FinanceQuery, user: AuthUser | undefined): PlanResponse {
   const session = createSession();
 
   if (query.kind === 'unsupported') {
@@ -1369,9 +1351,12 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
   // real result lands; the frontend shows its own "Thinking…" skeleton in
   // the gap.
   if (intent.agents.includes('flights') && intent.origin) {
+    beginWork(sessionId);
+    emitStatus(sessionId, `Searching flights ${titleCase(intent.origin)} → ${titleCase(intent.destination)}…`);
     getFlightOptions(intent.origin, intent.destination, departureDate).then(({ flights, source }) => {
       const s = getSession(sessionId);
       if (!s) return;
+      emitStatus(sessionId, `Found ${flights.length} flight${flights.length === 1 ? '' : 's'}.`);
       // Picked when the query named a time/flight, or just used booking
       // language at all ("book hotel as well with decent price" — no clock
       // time, but "book" is enough to fall back to the cheapest). A bare
@@ -1385,13 +1370,16 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
         : flights;
       s.flightsCache = new Map(stamped.map((f) => [f.id, f]));
       emitSurface(sessionId, 'flights', GOALS.flights, () => flightsSurface('flights', stamped));
-    });
+    }).finally(() => endWork(sessionId));
   }
 
   if (intent.agents.includes('hotels')) {
+    beginWork(sessionId);
+    emitStatus(sessionId, `Searching hotels in ${titleCase(intent.destination)}…`);
     getHotelOptions(intent.destination).then(({ hotels, source }) => {
       const s = getSession(sessionId);
       if (!s) return;
+      emitStatus(sessionId, `Found ${hotels.length} hotel${hotels.length === 1 ? '' : 's'}.`);
       s.hotelsCache = new Map(hotels.map((h) => [h.id, h]));
       indexHotels(hotels, intent.destination);
 
@@ -1419,7 +1407,7 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
       }
 
       emitSurface(sessionId, 'hotels', GOALS.hotels, () => hotelsSurface('hotels', hotels));
-    });
+    }).finally(() => endWork(sessionId));
   }
 
   // find_doctor: pure matching against the curated dataset, no LLM call for
@@ -1430,6 +1418,7 @@ function runAgents(sessionId: string, intent: ParsedIntent) {
     session.doctorsCache = new Map(matches.map((d) => [d.id, d]));
     session.symptom = intent.symptom;
     const specialty = normalizeSpecialty(intent.specialty);
+    emitStatus(sessionId, `Found ${matches.length} ${specialty} specialist${matches.length === 1 ? '' : 's'}.`);
     emitSurface(sessionId, 'doctors',
       `Show doctor matches for specialty "${specialty}": name, qualifications, expertise, languages, hospital, rating, consultation fee, photo. Available actions: viewDoctorProfile, context { name }; startDoctorBooking, context { name }.`,
       () => doctorsSurface('health', specialty, matches));
@@ -1479,7 +1468,7 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
       // departure date for however many nights"). `backToHotels` (already
       // wired into roomsSurface) is the same "switch" escape hatch already
       // proven for the flight recommendation.
-      const pendingIntent = session.pendingIntent as ParsedIntent | undefined;
+      const pendingIntent = session.pendingIntent;
       if (pendingIntent?.agents?.includes('hotels') && !session.trip.room && !session.activeHotelId && session.hotelsCache.size) {
         const hotel = pickRecommendedHotel(
           [...session.hotelsCache.values()] as HotelOption[],
@@ -1598,8 +1587,8 @@ app.post<{ Body: ActionPayload & { sessionId: string } }>('/api/action', { preHa
 
   // viewDoctorProfile/startDoctorBooking and backToDoctors are no longer
   // handled here — App.tsx intercepts the first two client-side and
-  // synthesizes a genuinely new chat turn instead (see detectDoctorLookup
-  // in agents/health.ts), and there's no "back" button left to fire the
+  // synthesizes a genuinely new chat turn instead (routed to the
+  // doctor_lookup tool), and there's no "back" button left to fire the
   // third (see doctorProfileSurface's own comment on why).
 
   if (name === 'confirmAppointment') {
@@ -1645,21 +1634,27 @@ app.post<{ Body: { sessionId: string; agent: 'flights' | 'hotels'; origin?: stri
     session.trip.origin = flightOrigin;
     const destination = session.trip.destination;
     const departureDate = session.trip.checkIn || todayIso();
+    beginWork(sessionId);
+    emitStatus(sessionId, `Searching flights ${titleCase(flightOrigin)} → ${titleCase(destination)}…`);
     getFlightOptions(flightOrigin, destination, departureDate).then(({ flights }) => {
       const s = getSession(sessionId);
       if (!s) return;
+      emitStatus(sessionId, `Found ${flights.length} flight${flights.length === 1 ? '' : 's'}.`);
       s.flightsCache = new Map(flights.map((f) => [f.id, f]));
       emitSurface(sessionId, 'flights', GOALS.flights, () => flightsSurface('flights', flights));
-    });
+    }).finally(() => endWork(sessionId));
   } else {
     const destination = session.trip.destination;
+    beginWork(sessionId);
+    emitStatus(sessionId, `Searching hotels in ${titleCase(destination)}…`);
     getHotelOptions(destination).then(({ hotels }) => {
       const s = getSession(sessionId);
       if (!s) return;
+      emitStatus(sessionId, `Found ${hotels.length} hotel${hotels.length === 1 ? '' : 's'}.`);
       s.hotelsCache = new Map(hotels.map((h) => [h.id, h]));
       indexHotels(hotels, destination);
       emitSurface(sessionId, 'hotels', GOALS.hotels, () => hotelsSurface('hotels', hotels));
-    });
+    }).finally(() => endWork(sessionId));
   }
 
   return reply.code(202).send({ ok: true });

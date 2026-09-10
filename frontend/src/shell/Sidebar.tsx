@@ -84,7 +84,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   useEffect(() => {
     if (!lastTurn) { setActiveApp(null); return; }
-    const resolved = classifyApp(lastTurn.query, lastTurn.intent);
+    const resolved = classifyApp(lastTurn.intent);
     // resolved === null → in-flight prompt or a plain clarification reply:
     // leave the current highlight exactly as it is.
     if (resolved) setActiveApp(resolved);

@@ -39,11 +39,12 @@ export function createBedrockBackend(model: string): CompleteFn {
         })
       : new AnthropicBedrock({ awsRegion: AWS_REGION, maxRetries: 0 });
 
-  return async function complete(instructions, userContent, timeoutMs) {
+  return async function complete(instructions, userContent, timeoutMs, options) {
     const message = await client.messages.create(
       {
-        model,
-        max_tokens: LLM_MAX_TOKENS,
+        // `temperature` stays unset: Claude Sonnet 5 rejects sampling params.
+        model: options?.model || model,
+        max_tokens: options?.maxTokens ?? LLM_MAX_TOKENS,
         thinking: { type: 'disabled' },
         system: `${instructions}\nRespond with ONLY a single JSON object, no prose, no markdown fences.`,
         messages: [{ role: 'user', content: userContent }],
