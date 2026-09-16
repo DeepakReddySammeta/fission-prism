@@ -55,6 +55,12 @@ export const TextApi = api('Text', {
   text: DYN.optional().describe('The string to render.'),
   variant: z.enum(['h1', 'h2', 'h3', 'body', 'caption', 'mono']).optional()
     .describe('Typographic role. h2 titles a card, caption is secondary/muted, mono is for codes and figures.'),
+  // Every other component that can show a number has this, so generated
+  // layouts reached for it here too and had the whole screen rejected for an
+  // undeclared prop. Declaring it is also the cheaper spelling: `text` bound
+  // to a raw number plus format:"inr" says in two props what a formatCurrency
+  // { call, args } blob spends far more output tokens on.
+  format: FORMAT.describe(`How to render a numeric \`text\`. One of: ${FORMATS.join(', ')}. Ignored when the text is not a number.`),
 }, 'A run of text. The workhorse — headings, labels, values, captions all use it.');
 
 export const ImageApi = api('Image', {

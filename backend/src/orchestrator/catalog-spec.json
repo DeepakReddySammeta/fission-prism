@@ -373,7 +373,7 @@
           "name": "height",
           "type": "number",
           "required": false,
-          "doc": "Pixels, and fills 100% of the available width. Overrides the default thumbnail size — use it for a photo that should read larger, e.g. a profile picture."
+          "doc": "Pixels. Overrides the default thumbnail height — use it for a photo that should read larger, e.g. a profile picture. Width follows the parent: put the Image in a Column with align \"stretch\" for it to fill full-bleed, or beside other content in a Row for it to size naturally."
         }
       ]
     },
@@ -758,6 +758,12 @@
           "type": "\"h1\" | \"h2\" | \"h3\" | \"body\" | \"caption\" | \"mono\"",
           "required": false,
           "doc": "Typographic role. h2 titles a card, caption is secondary/muted, mono is for codes and figures."
+        },
+        {
+          "name": "format",
+          "type": "\"inr\" | \"inrShort\" | \"percent\" | \"number\" | \"duration\"",
+          "required": false,
+          "doc": "How to render a numeric `text`. One of: inr, inrShort, percent, number, duration. Ignored when the text is not a number."
         }
       ]
     },

@@ -436,7 +436,7 @@ body {
 .a2-list .a2-row { align-items: center; }
 .a2-list .a2-row .a2-mono { font-size: 15px; }
 .a2-list .a2-row .a2-caption { font-size: 12px; }
-.a2-list .a2-row .a2-icon { font-size: 18px; }
+.a2-list .a2-row .a2-icon { font-size: 22px; }
 .a2-list { display: flex; flex-direction: column; gap: 8px; }
 .a2-list > * {
   padding: 12px 14px; border-radius: var(--radius-sm);
@@ -507,10 +507,27 @@ body {
   .a2-panel { transition: none; }
   .a2-panel:hover { transform: none; }
 }
-.a2-icon { color: var(--brass); }
+/* A standalone glyph (a named icon, or a symbol the data supplied such as the
+ * weather condition emoji). Sized explicitly — it used to inherit body text
+ * size, which left it visibly smaller than the labels beside it. */
+.a2-icon {
+  color: var(--brass);
+  font-size: 26px; line-height: 1;
+  display: inline-grid; place-items: center;
+}
+/* Initials avatar. Only the hue comes from the component (--mono-h); the
+ * lightness lives here so each theme can state its own — the previous inline
+ * background was a light-mode pastel painted onto dark cards as well. */
 .a2-monogram {
   width: 42px; height: 42px; border-radius: 50%; flex: none;
-  display: grid; place-items: center; font-family: var(--mono); font-weight: 700; font-size: 13px;
+  display: grid; place-items: center; font-family: var(--mono); font-weight: 700;
+  font-size: 15px; letter-spacing: .02em;
+  background: hsl(var(--mono-h, 24) 62% 92%);
+  color: hsl(var(--mono-h, 24) 52% 30%);
+}
+.dark .a2-monogram {
+  background: hsl(var(--mono-h, 24) 42% 20%);
+  color: hsl(var(--mono-h, 24) 78% 74%);
 }
 .a2-pending { height: 12px; border-radius: 4px; background: var(--paper-dim); }
 .a2-waiting { padding: 20px; color: var(--muted); font-size: 12.5px; font-style: italic; }
