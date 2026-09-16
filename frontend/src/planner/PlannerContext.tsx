@@ -6,7 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { saveConversation, loadConversation } from './persistence';
 import { uuid } from '../lib/uuid';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+import { API, STREAM_API } from '../lib/api';
 
 // An unclosed EventSource holds one HTTP/1.1 connection for the life of the
 // app, and browsers allow only ~6 per host — so past a handful of searches
@@ -159,7 +159,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
     updateTurn(id, { sessionId: sid, intent: parsedIntent });
     upsertRecent(conversationId, q, parsedIntent?.destination);
 
-    const es = new EventSource(`${API}/api/events/${sid}`);
+    const es = new EventSource(`${STREAM_API}/api/events/${sid}`);
     trackStream(id, es);
     es.addEventListener('a2ui', (e: MessageEvent) => {
       runtime.processMessages([JSON.parse(e.data)]);
@@ -225,7 +225,7 @@ export function PlannerProvider({ children }: { children: React.ReactNode }) {
         // Already-`started` sessions don't re-run their agents on a second
         // subscribe, so this is purely "keep listening," never a re-answer.
         if (t.sessionId) {
-          const es = new EventSource(`${API}/api/events/${t.sessionId}`);
+          const es = new EventSource(`${STREAM_API}/api/events/${t.sessionId}`);
           trackStream(t.id, es);
           es.addEventListener('a2ui', (e: MessageEvent) => {
             runtime.processMessages([JSON.parse(e.data)]);

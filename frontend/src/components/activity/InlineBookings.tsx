@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
-import { AuthDialog } from '../../auth/AuthDialog';
 import { PlanDetailDrawer } from '../PlanDetailDrawer';
 import type { TripSummary } from '../../types';
 import { Button } from '@/components/ui/button';
@@ -8,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+import { API } from '../../lib/api';
 
 interface PlanSummary {
   id: string;
@@ -87,7 +86,6 @@ export default function InlineBookings() {
   const { user, token, ready } = useAuth();
   const [dateFilter, setDateFilter] = useState<DateFilter>('all');
   const [bookings, setBookings] = useState<BookingRecord[] | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -114,10 +112,8 @@ export default function InlineBookings() {
     return (
       <div className="empty-state-box">
         <div className="empty-icon" aria-hidden>🔐</div>
-        <h3>Sign in to continue</h3>
-        <p>Sign in to see your confirmed bookings and manage your trips.</p>
-        <Button onClick={() => setAuthOpen(true)}>Sign in</Button>
-        <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
+        <h3>Not signed in</h3>
+        <p>Open Prism from the Fission AI Portal to see your confirmed bookings.</p>
       </div>
     );
   }

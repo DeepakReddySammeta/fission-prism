@@ -3,7 +3,7 @@ import { useAuth } from '../auth/AuthContext';
 import { TripSummaryDisplay } from './TripSummaryDisplay';
 import type { TripSummary } from '../types';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+import { API } from '../lib/api';
 
 interface PlanDetail {
   id: string;

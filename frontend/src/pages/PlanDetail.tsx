@@ -4,7 +4,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { TripSummary } from '../types';
 import { TripSummaryDisplay } from '../components/TripSummaryDisplay';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+import { API } from '../lib/api';
 
 interface PlanRecord {
   id: string;

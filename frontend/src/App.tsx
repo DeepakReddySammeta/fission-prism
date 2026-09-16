@@ -4,7 +4,6 @@ import { Surface } from './a2ui/Surface';
 import { surfaceData, hasComponent, componentCount } from './a2ui/runtime';
 import { downloadTripPdf } from './pdf';
 import { useAuth } from './auth/AuthContext';
-import { AuthDialog } from './auth/AuthDialog';
 import { usePlanner, type Turn } from './planner/PlannerContext';
 import { TripBuilderCard } from './components/TripBuilderCard';
 import { Stepper } from './components/Stepper';
@@ -20,7 +19,7 @@ import {
   CloudSun,
 } from 'lucide-react';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+import { API } from './lib/api';
 
 interface QuickAction {
   icon: React.ReactNode;
@@ -104,7 +103,7 @@ function HotelSkeleton() {
  * trip rail). All the interactive selection state (which flight is expanded,
  * dismissed cross-sell prompts, save/PDF button state) lives locally here,
  * scoped to this turn — it never leaks into other turns or the parent. */
-function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (token: string) => void) => void }) {
+function ChatTurn({ turn }: { turn: Turn }) {
   const storeVersion = useSyncExternalStore(turn.runtime.subscribe, turn.runtime.getSnapshot);
   const { token } = useAuth();
   const { plan } = usePlanner();
@@ -333,24 +332,26 @@ function ChatTurn({ turn, requestAuth }: { turn: Turn; requestAuth: (onAuthed: (
     [sessionId]
   );
 
-  // Accepts an optional freshly-issued token so it can be re-invoked as the
-  // AuthDialog's onSuccess callback right after sign-in, before `token` from
-  // useAuth() above has re-rendered into this closure.
+  // No sign-in prompt to fall back on any more: the portal authenticated the
+  // user before this app ever loaded. A missing token means the handshake with
+  // the shell did not complete, which the user cannot fix by signing in again.
   const saveTrip = useCallback(
-    async (freshToken?: string) => {
+    async () => {
       if (!sessionId) return;
-      const authToken = freshToken || token;
-      if (!authToken) { requestAuth(saveTrip); return; }
+      if (!token) {
+        pushMessage("⚠️ Couldn't save this trip — you're not signed in to the portal.");
+        return;
+      }
       setSaveState('saving');
       const res = await fetch(`${API}/api/plans`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${authToken}` },
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
         body: JSON.stringify({ sessionId }),
       });
       setSaveState(res.ok ? 'saved' : 'idle');
       pushMessage(res.ok ? '💾 Saved to My Plans — find it anytime from the sidebar.' : "⚠️ Couldn't save this trip — please try again.");
     },
-    [sessionId, token, requestAuth, pushMessage]
+    [sessionId, token, pushMessage]
   );
 
   const downloadPdf = useCallback(async () => {
@@ -800,19 +801,12 @@ function QuickActionsGrid({ onQuery }: { onQuery: (q: string) => void }) {
 export default function App() {
   const { turns, plan } = usePlanner();
   const [inputValue, setInputValue] = useState('');
-  const [authOpen, setAuthOpen] = useState(false);
-  const authResolveRef = useRef<((token: string) => void) | null>(null);
   const chatScrollRef = useRef<HTMLDivElement>(null);
 
   // Voice search is nothing more than "speech, converted to the same text a
   // typed query would be" — it fills the composer live while listening, then
   // submits exactly like hitting Enter once the browser detects silence.
   const voice = useVoiceSearch(setInputValue, (text) => { setInputValue(''); plan(text); });
-
-  const requestAuth = useCallback((onAuthed: (token: string) => void) => {
-    authResolveRef.current = onAuthed;
-    setAuthOpen(true);
-  }, []);
 
   useEffect(() => {
     chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: 'smooth' });
@@ -841,7 +835,7 @@ export default function App() {
       {showConversation && (
         <div className="chat-scroll" ref={chatScrollRef}>
           <div className="chat-stream">
-            {turns.map((turn) => <ChatTurn key={turn.id} turn={turn} requestAuth={requestAuth} />)}
+            {turns.map((turn) => <ChatTurn key={turn.id} turn={turn} />)}
           </div>
         </div>
       )}
@@ -903,13 +897,6 @@ export default function App() {
 
         </div>
       </div>
-
-      <AuthDialog
-        open={authOpen}
-        onClose={() => setAuthOpen(false)}
-        onSuccess={(token) => { const cb = authResolveRef.current; authResolveRef.current = null; cb?.(token); }}
-        reason="Sign in to save this trip to My Plans."
-      />
     </div>
   );
 }

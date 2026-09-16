@@ -90,22 +90,10 @@ export const LLM_TIMEOUT_SCALE = Number(
   process.env.LLM_TIMEOUT_SCALE || (LLM_PROVIDER === 'bedrock' ? 2 : 1),
 );
 
-/** POC-only fallback so auth works with zero setup. Set a real secret before
- * deploying anywhere shared — every server sharing this default trusts the
- * same tokens. In production (NODE_ENV=production) an unset/default secret is
- * a hard startup error rather than a silent security hole. */
-const DEFAULT_JWT_SECRET = 'voyage-ai-dev-secret-not-for-production';
-export const JWT_SECRET = process.env.JWT_SECRET || DEFAULT_JWT_SECRET;
-
-if (process.env.NODE_ENV === 'production' && JWT_SECRET === DEFAULT_JWT_SECRET) {
-  throw new Error(
-    'JWT_SECRET must be set to a strong random value in production. Generate one with:\n' +
-      '  node -e "console.log(require(\'crypto\').randomBytes(48).toString(\'base64url\'))"',
-  );
-}
-/** Unset by default — the "Continue with Google" button only renders (and
- * /api/auth/google only works) once this is configured. */
-export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+/* Authentication is delegated to the Fission AI Portal gateway, so this
+ * server signs no tokens and holds no secret of its own: JWT_SECRET and
+ * GOOGLE_CLIENT_ID are gone along with the /api/auth/* routes. What replaces
+ * them is a network boundary — see backend/src/auth/auth.ts. */
 
 /** Allowed browser origin(s) for CORS, comma-separated
  * (e.g. "https://app.example.com,https://www.example.com"). Unset — the

@@ -4,9 +4,8 @@ import 'dotenv/config';
 
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import { OAuth2Client } from 'google-auth-library';
 import type { ActionPayload, Envelope, FlightOption, HotelOption, ParsedIntent, RoomOption, TripSummary } from './types';
-import { PORT, LLM_ENABLED, LLM_MODEL, LLM_PROVIDER, GOOGLE_CLIENT_ID, CORS_ORIGINS } from './config';
+import { PORT, LLM_ENABLED, LLM_MODEL, LLM_PROVIDER, CORS_ORIGINS } from './config';
 import { routeQuery, APP_OF, type Route, type MyRecordsIntent, type AppointmentsQuery } from './agents/router';
 import { getFlightOptions } from './agents/flights';
 import { getHotelOptions } from './agents/hotels';
@@ -33,10 +32,10 @@ import {
 } from './orchestrator/envelopes';
 import { buildSurface } from './orchestrator/uiAgent';
 import {
-  db, type UserRow, type PlanRow, type AppointmentRow,
+  db, type PlanRow, type AppointmentRow,
   type FinanceProfileRow, type SavingsGoalRow,
 } from './db';
-import { newId, hashPassword, verifyPassword, signToken, toAuthUser, requireAuth, optionalAuth, type AuthUser } from './auth/auth';
+import { newId, requireAuth, optionalAuth, type AuthUser } from './auth/auth';
 import { loadWeather } from './weather/weather';
 
 /** Shared goal text for surfaces triggered from more than one place in this
@@ -1738,67 +1737,12 @@ function recomputeTotal(session: NonNullable<ReturnType<typeof getSession>>) {
 
 /* ---------------- Auth ---------------- */
 
-const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
-
-app.post<{ Body: { email: string; password: string } }>('/api/auth/signup', async (req, reply) => {
-  const email = req.body.email?.trim().toLowerCase();
-  const { password } = req.body;
-  if (!email || !password || password.length < 6) {
-    return reply.code(400).send({ error: 'a valid email and a password of at least 6 characters are required' });
-  }
-  if (db.prepare('SELECT id FROM users WHERE email = ?').get(email)) {
-    return reply.code(409).send({ error: 'an account with this email already exists' });
-  }
-
-  const id = newId();
-  const passwordHash = await hashPassword(password);
-  db.prepare('INSERT INTO users (id, email, password_hash, google_sub, created_at) VALUES (?, ?, ?, NULL, ?)')
-    .run(id, email, passwordHash, new Date().toISOString());
-
-  const user = { id, email };
-  return reply.code(201).send({ token: signToken(user), user });
-});
-
-app.post<{ Body: { email: string; password: string } }>('/api/auth/login', async (req, reply) => {
-  const email = req.body.email?.trim().toLowerCase();
-  const row = email ? (db.prepare('SELECT * FROM users WHERE email = ?').get(email) as UserRow | undefined) : undefined;
-  const ok = row?.password_hash && (await verifyPassword(req.body.password || '', row.password_hash));
-  if (!row || !ok) return reply.code(401).send({ error: 'invalid email or password' });
-
-  const user = toAuthUser(row);
-  return { token: signToken(user), user };
-});
-
-app.post<{ Body: { credential: string } }>('/api/auth/google', async (req, reply) => {
-  if (!googleClient) return reply.code(501).send({ error: 'Google sign-in is not configured on this server' });
-  if (!req.body.credential) return reply.code(400).send({ error: 'credential is required' });
-
-  let payload;
-  try {
-    const ticket = await googleClient.verifyIdToken({ idToken: req.body.credential, audience: GOOGLE_CLIENT_ID });
-    payload = ticket.getPayload();
-  } catch {
-    return reply.code(401).send({ error: 'invalid Google credential' });
-  }
-  if (!payload?.sub) return reply.code(401).send({ error: 'invalid Google credential' });
-
-  let row = db.prepare('SELECT * FROM users WHERE google_sub = ?').get(payload.sub) as UserRow | undefined;
-  if (!row && payload.email) {
-    row = db.prepare('SELECT * FROM users WHERE email = ?').get(payload.email) as UserRow | undefined;
-    if (row) db.prepare('UPDATE users SET google_sub = ? WHERE id = ?').run(payload.sub, row.id);
-  }
-  if (!row) {
-    const id = newId();
-    db.prepare('INSERT INTO users (id, email, password_hash, google_sub, created_at) VALUES (?, ?, NULL, ?, ?)')
-      .run(id, payload.email || null, payload.sub, new Date().toISOString());
-    row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRow;
-  }
-
-  const user = toAuthUser(row);
-  return { token: signToken(user), user };
-});
-
-app.get('/api/auth/me', { preHandler: requireAuth }, async (req) => ({ user: req.user }));
+/* Prism no longer issues or verifies its own credentials. The Fission AI
+ * Portal gateway authenticates the caller (Cognito), checks this app's
+ * allowed groups, and forwards the resolved identity as request headers —
+ * see backend/src/auth/auth.ts. Signup / login / Google / me all moved out
+ * with it; the portal owns sign-in, and an unauthenticated caller simply
+ * never reaches this server. */
 
 /* ---------------- Saved plans ---------------- */
 

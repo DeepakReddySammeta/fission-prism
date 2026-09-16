@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { AuthDialog } from '../auth/AuthDialog';
 import { loadRecents, togglePin, removeRecent, RECENTS_EVENT, type RecentEntry } from './recents';
 import { newChat } from './plannerBus';
 import { usePlanner } from '../planner/PlannerContext';
@@ -29,12 +28,11 @@ interface SidebarProps {
 }
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { activeId, turns, openConversation } = usePlanner();
   const navigate = useNavigate();
   const location = useLocation();
   const [recents, setRecents] = useState<RecentEntry[]>(loadRecents());
-  const [authOpen, setAuthOpen] = useState(false);
   const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem(THEME_KEY) as 'dark') || 'light');
   const [profileOpen, setProfileOpen] = useState(false);
   const [recentsExpanded, setRecentsExpanded] = useState(false);
@@ -94,11 +92,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const openRecent = (entry: RecentEntry) => {
     navigate('/');
     openConversation(entry.id, entry.query);
-  };
-
-  const handleLogout = () => {
-    logout();
-    setProfileOpen(false);
   };
 
   return (
@@ -220,17 +213,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                         <span className="profile-menu-icon" aria-hidden>📋</span>
                         <span>My Activity</span>
                       </button>
-                      <div className="profile-menu-divider" />
-                      <button className="profile-menu-item profile-menu-item-danger" onClick={handleLogout}>
-                        <span className="profile-menu-icon" aria-hidden>→</span>
-                        <span>Sign out</span>
-                      </button>
                     </div>
                   )}
                 </div>
-              ) : (
-                <Button size="sm" variant="secondary" onClick={() => setAuthOpen(true)}>Sign in</Button>
-              )
+              ) : null
             )}
 
             {collapsed && user && (
@@ -241,17 +227,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 aria-label="Open profile menu"
               >
                 {(user.email || '?').slice(0, 2).toUpperCase()}
-              </button>
-            )}
-
-            {collapsed && !user && (
-              <button
-                className="theme-icon-btn"
-                onClick={() => setAuthOpen(true)}
-                title="Sign in"
-                aria-label="Sign in"
-              >
-                →
               </button>
             )}
 
@@ -277,17 +252,11 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   <span className="profile-menu-icon" aria-hidden>📋</span>
                   <span>My Activity</span>
                 </button>
-                <div className="profile-menu-divider" />
-                <button className="profile-menu-item profile-menu-item-danger" onClick={handleLogout}>
-                  <span className="profile-menu-icon" aria-hidden>→</span>
-                  <span>Sign out</span>
-                </button>
               </div>
             )}
           </div>
         </div>
       </aside>
-      <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
     </>
   );
 }

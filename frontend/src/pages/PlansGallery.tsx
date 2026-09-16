@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { AuthDialog } from '../auth/AuthDialog';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { PlanDetailDrawer } from '../components/PlanDetailDrawer';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+import { API } from '../lib/api';
 
 type DateFilter = 'all' | 'upcoming' | 'past';
 
@@ -71,7 +70,6 @@ export default function PlansGallery() {
   const [searchParams, setSearchParams] = useSearchParams();
   const filter: DateFilter = (searchParams.get('filter') as DateFilter) || 'all';
   const [plans, setPlans] = useState<PlanSummary[] | null>(null);
-  const [authOpen, setAuthOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<PlanSummary | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [openPlanId, setOpenPlanId] = useState<string | null>(null);
@@ -118,11 +116,9 @@ export default function PlansGallery() {
         </div>
         <div className="empty-state-box">
           <div className="empty-icon" aria-hidden>🔐</div>
-          <h3>Sign in to continue</h3>
-          <p>Sign in to see the trips you've saved and pick up where you left off.</p>
-          <Button onClick={() => setAuthOpen(true)}>Sign in</Button>
+          <h3>Not signed in</h3>
+          <p>Open Prism from the Fission AI Portal to see the trips you've saved.</p>
         </div>
-        <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
       </div>
     );
   }

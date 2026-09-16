@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { fmtDuration } from '@/lib/utils';
 import { Stepper } from './Stepper';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+import { API } from '../lib/api';
 
 /** Saving is just "remember this destination/selection for later" — it
  * doesn't require finishing a booking first (the backend only ever required

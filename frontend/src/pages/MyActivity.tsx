@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
-import { AuthDialog } from '../auth/AuthDialog';
 import { Button } from '@/components/ui/button';
 
-const API = import.meta.env.VITE_API_URL || 'http://localhost:8787';
+import { API } from '../lib/api';
 
 type Category = 'all' | 'travel' | 'health';
 
@@ -64,7 +63,6 @@ export default function MyActivity() {
   const location = useLocation();
   const [category, setCategory] = useState<Category>('all');
   const [counts, setCounts] = useState<{ plans: number; bookings: number }>({ plans: 0, bookings: 0 });
-  const [authOpen, setAuthOpen] = useState(false);
 
   const isOverview = location.pathname === '/activity';
 
@@ -107,11 +105,9 @@ export default function MyActivity() {
         </div>
         <div className="empty-state-box">
           <div className="empty-icon" aria-hidden>🔐</div>
-          <h3>Sign in to continue</h3>
-          <p>Sign in to see your plans, bookings, and more in one place.</p>
-          <Button onClick={() => setAuthOpen(true)}>Sign in</Button>
+          <h3>Not signed in</h3>
+          <p>Open Prism from the Fission AI Portal to see your plans, bookings, and more.</p>
         </div>
-        <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
       </div>
     );
   }
