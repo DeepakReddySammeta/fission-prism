@@ -83,9 +83,13 @@ export async function generateJSON<T>(
   const callId = ++callCount;
   const started = Date.now();
   const effectiveTimeout = Math.round(timeoutMs * LLM_TIMEOUT_SCALE);
-  // At most two passes, and only ever a second one for a rate limit the
-  // provider told us how long to wait out.
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  // At most three passes, and a further one only ever for a rate limit the
+  // provider told us how long to wait out. Three rather than two because a
+  // 429 routinely names a delay, gets waited out, and is then followed by a
+  // *second* 429 naming a much shorter one (the quota refilling in chunks) —
+  // with two passes that second, eminently waitable delay returned null and
+  // cost the caller its whole screen.
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       const { text, promptTokens, completionTokens } = await backend(instructions, userContent, effectiveTimeout, options);
       const ms = Date.now() - started;
@@ -102,7 +106,7 @@ export async function generateJSON<T>(
       return parsed;
     } catch (err) {
       const ms = Date.now() - started;
-      const waitMs = attempt === 1 ? retryAfterMs(err) : null;
+      const waitMs = attempt < 3 ? retryAfterMs(err) : null;
       if (waitMs !== null && waitMs <= RATE_LIMIT_MAX_WAIT_MS) {
         console.warn(`[llm#${callId}] rate limited after ${ms}ms, waiting ${(waitMs / 1000).toFixed(1)}s for the quota — "${label}"`);
         await sleep(waitMs + 250);

@@ -149,7 +149,13 @@ const impl = <A extends { name: string; schema: any }>(
 
 const Text = impl(TextApi, ({ props }) => {
   const variant = props.variant || 'body';
-  const text = props.text == null ? '' : String(props.text);
+  // A named formatter, same as Metric/Table/charts take — applied only when
+  // the bound value really is a number, so format on a label is harmless.
+  const formatter = fmt(props.format);
+  const n = Number(props.text);
+  const text = formatter && props.text !== '' && props.text != null && Number.isFinite(n)
+    ? formatter(n)
+    : props.text == null ? '' : String(props.text);
   if (!text) return null;
   return <div className={`a2-text a2-${variant}`}>{text}</div>;
 });
@@ -193,19 +199,23 @@ const Image = impl(ImageApi, ({ props, context }) => (
 
 const Icon = impl(IconApi, ({ props }) => {
   const label = props.label ? String(props.label) : '';
-  if (label) {
-    const hue = labelHue(label);
+  // Only an actual word/code becomes a monogram avatar. A label with no
+  // letters or digits is a symbol the data supplied — the weather surface
+  // binds its condition emoji straight into this prop — and treating that as
+  // somebody's initials rendered a tiny glyph inside a coloured "initials"
+  // bubble, which is what it looked like.
+  if (label && /\p{L}|\p{N}/u.test(label)) {
+    // The hue goes out as a custom property rather than a finished colour:
+    // an inline background can't be re-stated per theme, so the light-mode
+    // pastel was being painted onto dark cards too. CSS owns the lightness
+    // now, this only owns the hue.
     return (
-      <span
-        className="a2-monogram"
-        style={{ background: `hsl(${hue} 62% 92%)`, color: `hsl(${hue} 55% 32%)` }}
-        aria-hidden
-      >
+      <span className="a2-monogram" style={{ '--mono-h': labelHue(label) } as React.CSSProperties} aria-hidden>
         {label.slice(0, 2).toUpperCase()}
       </span>
     );
   }
-  return <span className="a2-icon" aria-hidden>{ICONS[props.name as string] ?? '⭐'}</span>;
+  return <span className="a2-icon" aria-hidden>{label || ICONS[props.name as string] || '⭐'}</span>;
 });
 
 const Divider = impl(DividerApi, () => <div className="a2-divider" />);
