@@ -349,7 +349,7 @@ function ChatTurn({ turn }: { turn: Turn }) {
         body: JSON.stringify({ sessionId }),
       });
       setSaveState(res.ok ? 'saved' : 'idle');
-      pushMessage(res.ok ? '💾 Saved to My Plans — find it anytime from the sidebar.' : "⚠️ Couldn't save this trip — please try again.");
+      pushMessage(res.ok ? '💾 Saved to My Plans — find it anytime under Activity.' : "⚠️ Couldn't save this trip — please try again.");
     },
     [sessionId, token, pushMessage]
   );
