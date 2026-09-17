@@ -13,8 +13,10 @@
  *
  * Layouts are cached by (goal + data shape), not by request: the same kind of
  * answer reuses the same generated layout, so a chat turn pays no LLM latency
- * for its UI and repeat runs stay visually stable. A genuinely new shape of
- * answer is what triggers a fresh generation.
+ * for its UI and repeat runs stay visually stable. "Shape" here means types
+ * and row-count buckets only (skeletonOf) — never the values, or the same
+ * screen would re-generate every time a figure moved and no two users would
+ * ever share a layout.
  */
 import { generateJSON } from '../llm';
 import { A2UI_VERSION, CATALOG_ID } from '../types';
@@ -88,18 +90,26 @@ RULES
 8. Prefer the specific component over a generic one: Metric for a headline figure, Table for genuinely tabular records, a chart for a series, Badge for status. Do not build a table out of Rows, and do not build a metric out of two Texts.
 9. Buttons carry actions as { "event": { "name": "...", "context": { ... } } }. Only use action names the goal explicitly lists.
 
-DESIGN
-- One clear heading at the top (Text variant h2).
-- Group related facts; use Row for label/value on one line, Column to stack, columns:N for a grid of tiles.
-- Keep it dense but breathable: gap 8-16. Do not nest more than about 4 levels deep.
-- Every screen should read top-to-bottom as: what this is → the content → the action, if any.`;
+LAYOUT
+Pick the arrangement from the SHAPE of the data, never its topic. ARRAY SIZES below gives the row counts.
+Every screen reads heading → content → actions. First child is one Text variant "h2". Decide which single fact matters most and give it the biggest treatment (Metric, chart, or h3); a screen where everything weighs the same has failed.
+By row count:
+  1 — no list. Lay the record out: headline field as h3/Metric, the rest as label/value Rows, its photo as an Image.
+  2-4 — tiles: List or Column with columns:2 (3 if small), each tile a Column panel:true.
+  5+ — templated List; each row a Row align:"center" around a weight:1 Column, so trailing price/badge/button align down the list.
+  10+ mostly-numeric — a Table instead.
+By scalar: 2-4 headline figures → Row columns:N of Metric, above everything. A percent of a limit → Gauge or Bar, never Text. A series over time → LineChart/AreaChart; a split across categories → BarChart/Pie. Never list numbers where a chart fits.
+Group related fields in one container: panel:true fences a section, Divider splits different subjects, Text variant:"caption" labels a group. Never give one container 6+ ungrouped children. A label and its value are ONE Row justify:"between", not two stacked Texts.
+Use any image URL the data has. Status/tags are Badges, headline numbers are Metrics, codes and times are variant:"mono". Nothing that matters is plain body Text.
+gap 8 within a group, 16 between. ~4 levels of nesting max. Actions last, at most one variant:"primary".`;
 
 /* ---------------------------- data inspection ---------------------------- */
 
-/** A compact type skeleton of the data model — keys and types, one sample row
- * for arrays, values truncated. This is both what the prompt shows the model
- * and what the layout cache is keyed on, so two answers with the same shape
- * share a layout and a genuinely new shape gets a fresh one. */
+/** A compact skeleton of the data model — keys, one sample row per array,
+ * long strings truncated. This is what the prompt shows the model: sample
+ * values are what tell it whether a field is a three-letter code, a rupee
+ * figure or a sentence, which is a layout decision. The *cache* keys on
+ * `skeletonOf` instead, which strips those values. */
 function shapeOf(value: any, depth = 0): any {
   if (value === null || value === undefined) return null;
   if (Array.isArray(value)) return value.length ? [shapeOf(value[0], depth + 1)] : [];
@@ -109,6 +119,41 @@ function shapeOf(value: any, depth = 0): any {
   }
   if (typeof value === 'string') return value.length > 40 ? `${value.slice(0, 40)}…` : value;
   return value;
+}
+
+/** Every array in the data model, as "path: N rows". `shapeOf` renders an
+ * array as one sample row, which loses the single fact the layout actually
+ * turns on — four flights and forty expense rows produce an identical
+ * skeleton. This restores the cardinality without sending a second row. */
+function arraySizes(value: any, path = '', out: string[] = []): string[] {
+  if (Array.isArray(value)) {
+    out.push(`${path || '/'}: ${value.length} row${value.length === 1 ? '' : 's'}`);
+    if (value.length) arraySizes(value[0], `${path}/0`, out);
+  } else if (value && typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) arraySizes(v, `${path}/${k}`, out);
+  }
+  return out;
+}
+
+/** Which layout rule a row count falls under — the buckets the LAYOUT section
+ * of the prompt is written against. Used by the cache key so two runs that
+ * would be laid out the same way share one generation. */
+const sizeBucket = (n: number): string => (n === 0 ? '0' : n === 1 ? '1' : n <= 4 ? '2-4' : n <= 9 ? '5-9' : '10+');
+
+/** The same skeleton as `shapeOf`, with every value replaced by its type and
+ * every array by its size bucket. This — not `shapeOf` — is what the layout
+ * cache keys on: the layout a screen deserves depends on the shape of its
+ * data, never on the figures in it, so keying on values meant the identical
+ * screen re-generated every time a rupee amount moved (and no two users ever
+ * shared a cached layout). */
+function skeletonOf(value: any, depth = 0): any {
+  if (value === null || value === undefined) return null;
+  if (Array.isArray(value)) return [sizeBucket(value.length), value.length ? skeletonOf(value[0], depth + 1) : null];
+  if (typeof value === 'object') {
+    if (depth > 4) return '{…}';
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, skeletonOf(v, depth + 1)]));
+  }
+  return typeof value;
 }
 
 function get(data: any, path: string): { found: boolean; value: any } {
@@ -154,7 +199,17 @@ function childrenOf(c: ComponentDef): { ids: string[]; template?: { id: string; 
   return { ids, template };
 }
 
-export interface ValidationResult { ok: boolean; errors: string[] }
+export interface ValidationResult {
+  ok: boolean;
+  /** Correctness failures — the layout cannot render, so it is never shown. */
+  errors: string[];
+  /**
+   * Quality failures — the layout renders, it is just flat. Kept separate
+   * from `errors` on purpose: a plain screen beats the "couldn't generate"
+   * notice, so these buy a retry but never cost the traveller the surface.
+   */
+  warnings: string[];
+}
 
 /**
  * Everything that must hold for a generated layout to be worth rendering.
@@ -165,7 +220,7 @@ export interface ValidationResult { ok: boolean; errors: string[] }
 export function validateLayout(components: any, data: any): ValidationResult {
   const errors: string[] = [];
   if (!Array.isArray(components) || components.length === 0) {
-    return { ok: false, errors: ['components is not a non-empty array'] };
+    return { ok: false, errors: ['components is not a non-empty array'], warnings: [] };
   }
 
   const byId = new Map<string, ComponentDef>();
@@ -223,7 +278,81 @@ export function validateLayout(components: any, data: any): ValidationResult {
     if (!seen.has(id)) errors.push(`orphan component "${id}" is unreachable from root`);
   }
 
-  return { ok: errors.length === 0, errors };
+  return {
+    ok: errors.length === 0,
+    errors,
+    // Only worth grading a layout that actually renders — a broken tree's
+    // shape tells you nothing about its design.
+    warnings: errors.length === 0 ? qualityWarnings(byId, data) : [],
+  };
+}
+
+/* -------------------------- quality (not legality) -------------------------- */
+
+/** Does any component in the tree display this kind of thing? */
+const usesAny = (byId: Map<string, ComponentDef>, kinds: string[]): boolean =>
+  [...byId.values()].some((c) => kinds.includes(c.component));
+
+/** Every leaf value in the data model, flattened — used to ask "is there a
+ * number here at all", "is there a photo here at all". */
+function leaves(value: any, out: Array<[string, any]> = [], key = '', depth = 0): Array<[string, any]> {
+  if (depth > 5 || value === null || value === undefined) return out;
+  if (Array.isArray(value)) { if (value.length) leaves(value[0], out, key, depth + 1); return out; }
+  if (typeof value === 'object') {
+    for (const [k, v] of Object.entries(value)) leaves(v, out, k, depth + 1);
+    return out;
+  }
+  out.push([key, value]);
+  return out;
+}
+
+/**
+ * The checks that separate a designed screen from a legal one. Deliberately
+ * few and deliberately shape-based: each one names a *generic* failure the
+ * LAYOUT section of the prompt already forbids, so the retry can quote it
+ * back. None of them knows what a flight or a doctor is — adding a rule that
+ * did would be hardcoding the layout by the back door.
+ */
+function qualityWarnings(byId: Map<string, ComponentDef>, data: any): string[] {
+  const warnings: string[] = [];
+  const all = [...byId.values()];
+  const flat = leaves(data);
+
+  // 1. Numbers on screen with nothing to lift them. Badge counts: a list row
+  //    whose status pill carries the emphasis is a designed row.
+  const hasNumbers = flat.some(([, v]) => typeof v === 'number');
+  if (hasNumbers && !usesAny(byId, ['Metric', 'Badge', 'Table', 'Gauge', 'Bar', 'Pie', 'BarChart', 'LineChart', 'AreaChart', 'RadarChart'])) {
+    warnings.push('the data has numbers but the layout has no Metric, Badge, Table, Gauge, Bar or chart — every figure is plain Text, so nothing stands out');
+  }
+
+  // 2. An image URL sitting unused. Only fires on something that really is a
+  //    URL, so a field merely *named* "icon" doesn't trigger it.
+  const hasImage = flat.some(([k, v]) =>
+    typeof v === 'string' && /^https?:\/\//.test(v) && /image|photo|picture|thumb|avatar/i.test(k));
+  if (hasImage && !usesAny(byId, ['Image'])) {
+    warnings.push('the data carries a photo URL that no Image component uses');
+  }
+
+  // 3. A wall of siblings: one container holding six or more children with no
+  //    grouping of its own is the flat-stack failure mode.
+  for (const c of all) {
+    const kids = (c as any).children;
+    if (!Array.isArray(kids) || kids.length < 6) continue;
+    const allLeaves = kids.every((k: any) => {
+      const kid = typeof k === 'string' ? byId.get(k) : undefined;
+      return kid && !['Row', 'Column', 'List', 'Card', 'Tabs'].includes(kid.component);
+    });
+    if (allLeaves) {
+      warnings.push(`"${c.id}" stacks ${kids.length} ungrouped children — group related fields into Rows/Columns instead of one flat list`);
+      break;
+    }
+  }
+
+  // 4. No hierarchy at all: nothing is bigger than anything else.
+  const hasHeading = all.some((c) => c.component === 'Text' && ['h1', 'h2'].includes(String((c as any).variant)));
+  if (!hasHeading) warnings.push('no Text with variant "h2" — the screen has no heading tier');
+
+  return warnings;
 }
 
 /* ------------------------------ generation ------------------------------ */
@@ -238,7 +367,7 @@ export interface LayoutRequest {
 const layoutCache = new Map<string, ComponentDef[]>();
 
 export function layoutCacheKey(req: LayoutRequest): string {
-  return `${req.goal}::${JSON.stringify(shapeOf(req.data))}`;
+  return `${req.goal}::${JSON.stringify(skeletonOf(req.data))}`;
 }
 
 /**
@@ -250,10 +379,15 @@ export async function generateLayout(req: LayoutRequest): Promise<ComponentDef[]
   const cached = layoutCache.get(key);
   if (cached) return cached;
 
+  const sizes = arraySizes(req.data);
   const basePrompt = [
     `GOAL\n${req.goal}`,
     `DATA MODEL (shape — bind against these paths)\n${JSON.stringify(shapeOf(req.data), null, 2)}`,
-  ].join('\n\n');
+    // The shape shows one sample row per array, so without this the model
+    // cannot tell four flights from forty expenses — and every rule in the
+    // LAYOUT section is written against exactly that number.
+    sizes.length ? `ARRAY SIZES (pick the arrangement from these)\n${sizes.join('\n')}` : '',
+  ].filter(Boolean).join('\n\n');
 
   // One retry on a bad generation (malformed JSON, or a valid tree that fails
   // validation) — there is no hand-written screen to fall back to anymore, so
@@ -262,24 +396,50 @@ export async function generateLayout(req: LayoutRequest): Promise<ComponentDef[]
   // times and still degrades to unavailableLayout after this. The attempt
   // marker keeps generateJSON's own cache (keyed on the exact prompt text)
   // from just replaying attempt 1's bad output on attempt 2.
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    const userContent = attempt === 1 ? basePrompt : `${basePrompt}\n\n(retry ${attempt})`;
-    const result = await generateJSON<{ components: ComponentDef[] }>(INSTRUCTIONS, userContent, 30_000);
-    if (!result?.components) continue;
+  // What attempt 1 got wrong, quoted back to attempt 2. Without this the
+  // retry was blind — it re-asked the identical question and reliably made
+  // the identical mistake, so a screen the model would have fixed in one
+  // line became "couldn't generate this" instead.
+  let feedback = '';
+  let lastGood: ComponentDef[] | null = null;
 
-    const { ok, errors } = validateLayout(result.components, req.data);
-    if (!ok) {
-      console.warn(`[uiAgent] rejected layout for "${req.goal.slice(0, 40)}" (attempt ${attempt}): ${errors.slice(0, 3).join('; ')}`);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    // The attempt marker also keeps generateJSON's own cache (keyed on the
+    // exact prompt text) from replaying attempt 1's bad output.
+    const userContent = attempt === 1 ? basePrompt : `${basePrompt}\n\n${feedback}`;
+    const result = await generateJSON<{ components: ComponentDef[] }>(INSTRUCTIONS, userContent, 30_000);
+    if (!result?.components) {
+      feedback = `(retry ${attempt + 1}) Your previous answer was not usable JSON of the form { "components": [...] }. Return that exact shape.`;
       continue;
     }
+
+    const { ok, errors, warnings } = validateLayout(result.components, req.data);
+    if (!ok) {
+      console.warn(`[uiAgent] rejected layout for "${req.goal.slice(0, 40)}" (attempt ${attempt}): ${errors.slice(0, 3).join('; ')}`);
+      feedback = `(retry ${attempt + 1}) Your previous layout was rejected. Fix exactly these problems and return the whole corrected components array:\n${errors.slice(0, 8).map((e) => `- ${e}`).join('\n')}`;
+      continue;
+    }
+
+    if (warnings.length && attempt === 1) {
+      // Renders fine, just flat. Keep it as the floor — a plain screen beats
+      // the "couldn't generate" notice — and spend the second attempt asking
+      // for a better arrangement of the same data.
+      console.warn(`[uiAgent] flat layout for "${req.goal.slice(0, 40)}", retrying: ${warnings.join('; ')}`);
+      lastGood = result.components;
+      feedback = `(retry ${attempt + 1}) Your previous layout was valid but poorly composed:\n${warnings.map((w) => `- ${w}`).join('\n')}\nRe-read the LAYOUT section and return a better-composed components array for the same data. Keep every binding you already had.`;
+      continue;
+    }
+
     layoutCache.set(key, result.components);
     return result.components;
   }
-  return null;
+
+  if (lastGood) layoutCache.set(key, lastGood);
+  return lastGood;
 }
 
 /** Exposed for the accuracy harness, which scores raw generations. */
-export const _internals = { INSTRUCTIONS, shapeOf, renderCatalog };
+export const _internals = { INSTRUCTIONS, shapeOf, skeletonOf, arraySizes, renderCatalog };
 
 /* --------------------------- server integration --------------------------- */
 
