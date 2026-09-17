@@ -203,6 +203,12 @@ export interface Session {
    * month") — consumed once, when the SSE stream connects (see
    * emitFinance in server.ts). Mirrors pendingAppointments. */
   pendingFinance?: PendingFinance;
+  /** Set instead of pendingIntent for a book search query — consumed once,
+   * when the SSE stream connects (see runBooks in server.ts). */
+  pendingBooks?: { query: string };
+  /** Set instead of pendingIntent for a movie search query — consumed once,
+   * when the SSE stream connects (see runMovies in server.ts). */
+  pendingMovies?: { query: string };
   /** Which card the lookup should render — the read-only profile, or
    * straight to the booking form — 'book' when the request that led here
    * was booking-flavored ("book an appointment with Dr. X", or a chat

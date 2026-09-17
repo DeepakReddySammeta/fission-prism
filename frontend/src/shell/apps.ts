@@ -2,7 +2,7 @@ import type { Intent } from '../planner/PlannerContext';
 
 /** The three domains the platform actually serves — shown in the sidebar
  * under "Apps", with the one matching the current conversation highlighted. */
-export type AppId = 'trip' | 'health' | 'finance';
+export type AppId = 'trip' | 'health' | 'finance' | 'books' | 'movies';
 
 export interface AppDef {
   id: AppId;
@@ -16,6 +16,8 @@ export const APPS: AppDef[] = [
   { id: 'trip', label: 'Trip Planner', desc: 'Flights, hotels & itineraries' },
   { id: 'health', label: 'Healthcare', desc: 'Doctors & appointments' },
   { id: 'finance', label: 'Finance', desc: 'Budget, expenses & portfolio' },
+  { id: 'books', label: 'Books', desc: 'Search & discover books' },
+  { id: 'movies', label: 'Movies', desc: 'Search & discover movies' },
 ];
 
 /** Which app, if any, the given turn belongs to. The backend sets this from

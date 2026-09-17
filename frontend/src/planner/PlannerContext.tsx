@@ -22,11 +22,11 @@ export interface Intent {
   /** The backend's own classification of the request. 'refine' covers every
    * reply that renders no screen of its own — a clarifying question, or a
    * request this app has no flow for. */
-  intent?: 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'find_doctor' | 'explore_destinations' | 'check_weather';
+  intent?: 'plan_trip' | 'browse_hotels' | 'browse_flights' | 'refine' | 'find_doctor' | 'explore_destinations' | 'check_weather' | 'search_books' | 'search_movies';
   /** Which sidebar app answered, straight from the router's own tool choice
    * — the sidebar reads this instead of keyword-matching the query. */
-  app?: 'trip' | 'health' | 'finance' | null;
-  agents: Array<'flights' | 'hotels' | 'health'>;
+  app?: 'trip' | 'health' | 'finance' | 'books' | 'movies' | null;
+  agents: Array<'flights' | 'hotels' | 'health' | 'books' | 'movies'>;
   summary?: string;
   /** True when the query used booking language ("book...") — the combined
    * flight+room recommendation card only applies when this is set, so the
